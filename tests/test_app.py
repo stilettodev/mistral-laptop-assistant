@@ -460,3 +460,132 @@ def test_upload_non_image_saves_to_disk(client: TestClient) -> None:
             assert Path(data["path"]).exists()
         finally:
             settings.uploads_dir = orig
+
+
+# ── persona registry ────────────────────────────────────────────────────
+
+
+def test_friday_in_personas() -> None:
+    from app.schemas import PERSONAS
+
+    assert "friday" in PERSONAS
+    prompt = PERSONAS["friday"]
+    assert "FRIDAY" in prompt
+    assert "agentic" in prompt
+    assert "tests" in prompt.lower() or "test" in prompt
+
+
+def test_all_personas_have_content() -> None:
+    from app.schemas import PERSONAS
+
+    assert all(p.strip() for p in PERSONAS.values())
+
+
+# ── settings endpoint ──────────────────────────────────────────────────
+
+
+def test_settings_get_returns_defaults(client: TestClient) -> None:
+    resp = client.get("/api/settings")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["default_persona"] in ("jarvis", "veronica", "friday")
+    assert data["safety_mode"] in ("strict", "normal", "yolo")
+    assert isinstance(data["personas"], list)
+    ids = [p["id"] for p in data["personas"]]
+    assert "jarvis" in ids and "friday" in ids
+
+
+def test_settings_put_persona(client: TestClient) -> None:
+    resp = client.put("/api/settings", json={"default_persona": "friday"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["default_persona"] == "friday"
+
+
+def test_settings_put_invalid_persona(client: TestClient) -> None:
+    resp = client.put("/api/settings", json={"default_persona": "invalid"})
+    assert resp.status_code == 400
+
+
+def test_settings_put_safety(client: TestClient) -> None:
+    resp = client.put("/api/settings", json={"safety_mode": "strict"})
+    assert resp.status_code == 200
+    assert resp.json()["safety_mode"] == "strict"
+
+
+# ── keys endpoint ───────────────────────────────────────────────────────
+
+
+def test_keys_get_empty(client: TestClient, tmp_path: Path) -> None:
+    import app.config
+    orig = app.config.settings.keys_file
+    app.config.settings.keys_file = tmp_path / "keys.json"
+    try:
+        resp = client.get("/api/keys")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "keys" in data
+        assert isinstance(data["keys"], list)
+    finally:
+        app.config.settings.keys_file = orig
+
+
+def test_keys_add_and_list(client: TestClient, tmp_path: Path) -> None:
+    import app.config
+    orig = app.config.settings.keys_file
+    app.config.settings.keys_file = tmp_path / "keys.json"
+    try:
+        resp = client.post("/api/keys", json={"key": "sk-test1234567890abcdef", "label": "test key"})
+        assert resp.status_code == 200
+        info = resp.json()
+        assert info["id"]
+        assert info["label"] == "test key"
+        # Full key never leaks — verify neither the full start nor end appears.
+        raw = "sk-test1234567890abcdef"
+        assert raw not in info["prefix"]
+        assert "sk-test" not in info["prefix"]  # start hidden
+
+        resp = client.get("/api/keys")
+        data = resp.json()
+        assert len(data["keys"]) >= 1
+    finally:
+        app.config.settings.keys_file = orig
+
+
+def test_keys_add_duplicate_rejected(client: TestClient, tmp_path: Path) -> None:
+    import app.config
+    orig = app.config.settings.keys_file
+    app.config.settings.keys_file = tmp_path / "keys.json"
+    try:
+        key = "sk-duplicate1234567890abcdefgh"
+        assert client.post("/api/keys", json={"key": key}).status_code == 200
+        resp = client.post("/api/keys", json={"key": key})
+        assert resp.status_code == 400
+    finally:
+        app.config.settings.keys_file = orig
+
+
+def test_keys_delete_removes(client: TestClient, tmp_path: Path) -> None:
+    import app.config
+    orig = app.config.settings.keys_file
+    app.config.settings.keys_file = tmp_path / "keys.json"
+    try:
+        add = client.post("/api/keys", json={"key": "sk-delete999abcdefghij"}).json()
+        kid = add["id"]
+        assert client.delete(f"/api/keys/{kid}").status_code == 200
+        resp = client.delete(f"/api/keys/{kid}")
+        assert resp.status_code == 404  # already gone
+    finally:
+        app.config.settings.keys_file = orig
+
+
+def test_keys_delete_env_key_rejected(client: TestClient) -> None:
+    resp = client.delete("/api/keys/env-0")
+    assert resp.status_code == 400
+
+
+def test_keys_without_api_key_still_serves(client: TestClient) -> None:
+    """The /api/keys endpoint should work even when no key is configured."""
+    resp = client.get("/api/keys")
+    assert resp.status_code == 200
+    assert "keys" in resp.json()

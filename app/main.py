@@ -40,8 +40,16 @@ from .agent import CONVERSATIONS, chat_oneshot, run_agent
 from .config import settings
 from .mistral_client import list_models
 from .scheduler import SCHEDULER
-from .schemas import ChatRequest, SpeakRequest, StatusResponse
-from . import storage, voice
+from .schemas import (
+    ChatRequest,
+    KeyAdd,
+    KeyInfo,
+    PERSONAS,
+    SettingsUpdate,
+    SpeakRequest,
+    StatusResponse,
+)
+from . import keystore, storage, voice
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("mla")
@@ -78,7 +86,7 @@ app = FastAPI(title="Mistral Laptop Assistant", version="0.2.0", lifespan=lifesp
 def status() -> StatusResponse:
     return StatusResponse(
         ok=True,
-        api_key_configured=bool(settings.mistral_api_key),
+        api_key_configured=bool(settings.all_api_keys),
         safety_mode=settings.safety_mode,
         default_model=settings.default_model,
         default_persona=settings.default_persona,
@@ -98,6 +106,94 @@ def capabilities() -> dict[str, object]:
         "default_safety": settings.safety_mode,
         "tts_enabled": settings.tts_enabled,
     }
+
+
+# ── settings (live, UI-managed) ─────────────────────────────────────────
+
+
+_PERSONA_META = {
+    "jarvis":   {"label": "Jarvis",   "icon": "☕", "sub": "Companion"},
+    "veronica": {"label": "Veronica", "icon": "🔬", "sub": "Research"},
+    "friday":   {"label": "Friday",   "icon": "🛠️", "sub": "Coding"},
+}
+
+
+@app.get("/api/settings")
+def get_settings() -> dict[str, object]:
+    return {
+        "default_persona": settings.default_persona,
+        "default_model": settings.default_model,
+        "safety_mode": settings.safety_mode,
+        "tts_enabled": settings.tts_enabled,
+        "personas": [
+            {
+                "id": pid,
+                "label": meta["label"],
+                "icon": meta["icon"],
+                "sub": meta["sub"],
+                "description": PERSONAS.get(pid, "").split("\n", 1)[0],
+            }
+            for pid, meta in _PERSONA_META.items()
+            if pid in PERSONAS
+        ],
+        "key_count": len(settings.all_api_keys),
+    }
+
+
+@app.put("/api/settings")
+def put_settings(update: SettingsUpdate) -> dict[str, object]:
+    if update.default_persona is not None:
+        if update.default_persona not in PERSONAS:
+            raise HTTPException(400, f"unknown persona: {update.default_persona!r}")
+        settings.default_persona = update.default_persona  # type: ignore[assignment]
+    if update.default_model is not None:
+        settings.default_model = update.default_model
+    if update.safety_mode is not None:
+        settings.safety_mode = update.safety_mode
+    if update.tts_enabled is not None:
+        settings.tts_enabled = update.tts_enabled
+    return get_settings()
+
+
+# ── API keys (multi-key fallback pool) ──────────────────────────────────
+
+
+@app.get("/api/keys")
+def list_keys() -> dict[str, object]:
+    """Return masked metadata for every stored key (UI + env)."""
+    items: list[dict[str, object]] = [k.model_dump() for k in keystore.list_keys()]
+    env_keys = []
+    if settings.mistral_api_key:
+        env_keys.append(settings.mistral_api_key)
+    if settings.mistral_api_keys:
+        env_keys.extend(k.strip() for k in settings.mistral_api_keys.split(",") if k.strip())
+    for i, k in enumerate(env_keys):
+        masked = (k[:4] + "…" + k[-4:]) if len(k) > 8 else "•" * len(k)
+        items.append({
+            "id": f"env-{i}",
+            "label": "env" if i == 0 else f"env fallback {i}",
+            "prefix": masked,
+            "primary": not items and i == 0,
+            "source": "env",
+        })
+    return {"keys": items, "total": len(items)}
+
+
+@app.post("/api/keys", response_model=KeyInfo)
+def add_key(payload: KeyAdd) -> KeyInfo:
+    try:
+        return keystore.add_key(payload.key, payload.label)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.delete("/api/keys/{key_id}")
+def delete_key(key_id: str) -> dict[str, bool]:
+    if key_id.startswith("env-"):
+        raise HTTPException(400, "env-provided keys cannot be removed from the UI")
+    if not keystore.remove_key(key_id):
+        raise HTTPException(404, "key not found")
+    return {"ok": True}
 
 
 @app.get("/api/models")
@@ -134,10 +230,11 @@ def reset_conversation(cid: str) -> dict[str, bool]:
 
 @app.post("/api/chat")
 async def chat(payload: ChatRequest, request: Request) -> StreamingResponse:
-    if not settings.mistral_api_key:
+    if not settings.all_api_keys:
         raise HTTPException(
             status_code=400,
-            detail="Mistral API key not configured. Set MLA_MISTRAL_API_KEY in your .env.",
+            detail="No Mistral API key configured. Add one in the Settings tab "
+                   "or set MLA_MISTRAL_API_KEY in your .env.",
         )
 
     cid = request.headers.get("x-conversation-id") or str(uuid.uuid4())

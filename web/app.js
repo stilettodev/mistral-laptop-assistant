@@ -91,7 +91,7 @@ async function loadModels() {
   updateModelChip();
 }
 
-function fillSettings() { /* settings tab removed in redesign */ }
+function fillSettings() { /* legacy stub — kept for compatibility */ }
 
 function bindUI() {
   modelPicker.addEventListener("change", updateModelChip);
@@ -143,8 +143,8 @@ function bindUI() {
       document.querySelectorAll(".persona-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       document.body.dataset.persona = p;
-      // Update avatar of any already-rendered assistant messages
-      const letter = p === "veronica" ? "V" : "J";
+      // Refresh any already-rendered assistant avatars.
+      const letter = personaLetter(p);
       document.querySelectorAll(".msg.assistant .avatar").forEach((a) => {
         a.textContent = letter;
       });
@@ -161,9 +161,10 @@ function bindUI() {
     document.querySelectorAll(".tab-pane").forEach((p) => {
       p.classList.toggle("hidden", p.dataset.pane !== which);
     });
-    if (which === "history") refreshHistory();
+    if (which === "history")  refreshHistory();
     if (which === "jobs")    refreshJobs();
     if (which === "memory")  refreshMemory();
+    if (which === "settings") refreshSettings();
   });
 
   // Voice in
@@ -352,6 +353,186 @@ async function refreshMemory() {
     list.innerHTML = `<li class="row-meta">${escapeHtml(e.message)}</li>`;
   }
 }
+
+// ── Settings tab (defaults + key pool) ───────────────────────────────
+
+async function refreshSettings() {
+  await Promise.all([refreshKeys(), loadSettingsDefaults()]);
+  bindSettingsForm();
+}
+
+async function refreshKeys() {
+  const list = $("keyList");
+  const countEl = $("keyCount");
+  list.innerHTML = '<li class="key-row muted">loading…</li>';
+  try {
+    const r = await fetch("/api/keys");
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const { keys, total } = await r.json();
+    countEl.textContent = total === 1 ? "1 key" : `${total} keys`;
+    list.innerHTML = "";
+    if (!keys.length) {
+      list.innerHTML = '<li class="key-row muted">no keys yet — add one below</li>';
+      return;
+    }
+    keys.forEach((k, i) => {
+      const isEnv = k.source === "env";
+      const li = document.createElement("li");
+      li.className = "key-row" + (i === 0 ? " primary" : "");
+      const tagPrimary = i === 0 ? '<span class="key-tag primary">primary</span>' : "";
+      const tagEnv     = isEnv ? '<span class="key-tag env">env</span>' : "";
+      const removeBtn  = isEnv
+        ? '<span class="key-locked" title="Defined in .env — edit there to remove">🔒</span>'
+        : `<button type="button" class="key-remove" title="Remove" data-id="${escapeHtml(k.id)}">✕</button>`;
+      li.innerHTML = `
+        <span class="key-meta">
+          <span class="key-label">${escapeHtml(k.label || "untitled")}</span>
+          ${tagPrimary}${tagEnv}
+        </span>
+        <span class="key-prefix">${escapeHtml(k.prefix)}</span>
+        ${removeBtn}`;
+      const btn = li.querySelector("button.key-remove");
+      if (btn) btn.addEventListener("click", () => removeKey(k.id, k.label));
+      list.appendChild(li);
+    });
+  } catch (e) {
+    list.innerHTML = `<li class="key-row muted">${escapeHtml(e.message)}</li>`;
+  }
+}
+
+async function removeKey(id, label) {
+  if (!confirm(`Remove key "${label || id}"?`)) return;
+  const r = await fetch(`/api/keys/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!r.ok) {
+    const data = await r.json().catch(() => ({}));
+    showError(data.detail || `Could not remove key (HTTP ${r.status})`);
+    return;
+  }
+  await refreshKeys();
+  loadStatus();
+}
+
+function bindSettingsForm() {
+  const form = $("keyForm");
+  if (form.dataset.bound) return;
+  form.dataset.bound = "1";
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const labelEl = $("keyLabel");
+    const valueEl = $("keyValue");
+    const key = valueEl.value.trim();
+    const label = labelEl.value.trim();
+    if (!key) return;
+    const btn = form.querySelector("button");
+    btn.disabled = true;
+    btn.textContent = "Adding…";
+    try {
+      const r = await fetch("/api/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key, label }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || `HTTP ${r.status}`);
+      labelEl.value = "";
+      valueEl.value = "";
+      await refreshKeys();
+      loadStatus();
+    } catch (err) {
+      showError(`Could not add key: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Add key";
+    }
+  });
+
+  document.querySelectorAll("#settingsSafety .safety-btn").forEach((b) => {
+    b.addEventListener("click", async () => {
+      document.querySelectorAll("#settingsSafety .safety-btn").forEach(
+        (x) => x.classList.remove("active")
+      );
+      b.classList.add("active");
+      await saveSettings({ safety_mode: b.dataset.mode });
+    });
+  });
+
+  $("settingsTts").addEventListener("change", (e) =>
+    saveSettings({ tts_enabled: e.target.checked })
+  );
+  $("settingsModel").addEventListener("change", (e) =>
+    saveSettings({ default_model: e.target.value })
+  );
+}
+
+async function loadSettingsDefaults() {
+  const settingsRes = await (await fetch("/api/settings")).json();
+
+  // Persona radios
+  const personaWrap = $("settingsPersona");
+  personaWrap.innerHTML = "";
+  for (const p of settingsRes.personas || []) {
+    const id = `sp-${p.id}`;
+    const wrap = document.createElement("label");
+    wrap.className = "persona-radio-item";
+    wrap.htmlFor = id;
+    wrap.innerHTML = `
+      <input type="radio" name="settingsPersona" id="${id}" value="${escapeHtml(p.id)}"
+        ${p.id === settingsRes.default_persona ? "checked" : ""}/>
+      <span class="prr-icon">${p.icon || "•"}</span>
+      <span class="prr-text">
+        <span class="prr-label">${escapeHtml(p.label)}</span>
+        <span class="prr-sub">${escapeHtml(p.sub || "")}</span>
+      </span>`;
+    wrap.querySelector("input").addEventListener("change", async (e) => {
+      if (!e.target.checked) return;
+      await saveSettings({ default_persona: p.id });
+      state.persona = p.id;
+      document.body.dataset.persona = p.id;
+      document.querySelectorAll(".persona-btn").forEach((b) =>
+        b.classList.toggle("active", b.dataset.persona === p.id)
+      );
+    });
+    personaWrap.appendChild(wrap);
+  }
+
+  // Default model dropdown — reuse modelsById from sidebar load
+  const modelSel = $("settingsModel");
+  modelSel.innerHTML = "";
+  for (const m of Object.values(state.modelsById)) {
+    const opt = document.createElement("option");
+    opt.value = m.id;
+    opt.textContent = m.id === "auto" ? "🤖 auto" : m.id;
+    if (m.description) opt.title = m.description;
+    if (m.id === settingsRes.default_model) opt.selected = true;
+    modelSel.appendChild(opt);
+  }
+
+  // Safety pills
+  document.querySelectorAll("#settingsSafety .safety-btn").forEach((b) =>
+    b.classList.toggle("active", b.dataset.mode === settingsRes.safety_mode)
+  );
+
+  // TTS toggle
+  $("settingsTts").checked = !!settingsRes.tts_enabled;
+}
+
+async function saveSettings(patch) {
+  try {
+    const r = await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
+      throw new Error(data.detail || `HTTP ${r.status}`);
+    }
+  } catch (e) {
+    showError(`Settings save failed: ${e.message}`);
+  }
+}
+
 
 // ── Voice (mic + TTS) ────────────────────────────────────────────────
 
@@ -674,7 +855,7 @@ function addAssistantMessage(text) {
 function renderMessage(role, who, text) {
   const el = document.createElement("div");
   el.className = `msg ${role}`;
-  const avatar = role === "user" ? "U" : (state.persona === "veronica" ? "V" : "J");
+  const avatar = role === "user" ? "U" : personaLetter(state.persona);
   el.innerHTML = `
     <div class="avatar">${avatar}</div>
     <div class="bubble">
@@ -682,6 +863,12 @@ function renderMessage(role, who, text) {
       <div class="body">${renderMarkdown(text)}</div>
     </div>`;
   return el;
+}
+
+function personaLetter(persona) {
+  if (persona === "veronica") return "V";
+  if (persona === "friday")   return "F";
+  return "J";
 }
 
 function renderToolCall(data) {

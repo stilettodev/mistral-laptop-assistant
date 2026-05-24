@@ -51,9 +51,12 @@ class Settings(BaseSettings):
     port: int = Field(default=8000)
 
     # ── Personas ──────────────────────────────────────────────────────────────
-    default_persona: Literal["jarvis", "veronica"] = Field(
+    default_persona: Literal["jarvis", "veronica", "friday"] = Field(
         default="jarvis",
-        description="Default personality: 'jarvis' (casual) or 'veronica' (research)",
+        description=(
+            "Default personality: 'jarvis' (casual companion), "
+            "'veronica' (research), or 'friday' (agentic coding & terminal)."
+        ),
     )
 
     # Safety
@@ -83,6 +86,10 @@ class Settings(BaseSettings):
     uploads_dir: Path = Field(
         default_factory=lambda: Path.home() / ".mistral_assistant_uploads"
     )
+    keys_file: Path = Field(
+        default_factory=lambda: Path.home() / ".mistral_assistant_keys.json",
+        description="Disk store for Mistral API keys managed via the UI.",
+    )
 
     # Voice
     stt_model: str = Field(default="voxtral-mini-latest")
@@ -97,16 +104,36 @@ class Settings(BaseSettings):
     # ── Helpers ───────────────────────────────────────────────────────────────
     @property
     def all_api_keys(self) -> list[str]:
-        """Return all API keys in priority order (primary first, then fallbacks)."""
-        keys = []
+        """Return all API keys in priority order.
+
+        Order: keys from the UI keystore (first = primary) → env primary →
+        env fallbacks. Duplicates are removed while preserving order.
+        """
+        keys: list[str] = []
+        # 1. UI-managed keystore (lazy import to avoid circular dep).
+        try:
+            from . import keystore
+
+            keys.extend(keystore.raw_keys())
+        except Exception:  # noqa: BLE001
+            pass
+        # 2. Primary env key.
         if self.mistral_api_key:
             keys.append(self.mistral_api_key)
+        # 3. Comma-separated fallback env keys.
         if self.mistral_api_keys:
             for k in self.mistral_api_keys.split(","):
                 k = k.strip()
-                if k and k not in keys:
+                if k:
                     keys.append(k)
-        return keys
+        # Dedupe while preserving order.
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for k in keys:
+            if k not in seen:
+                seen.add(k)
+                deduped.append(k)
+        return deduped
 
 
 settings = Settings()

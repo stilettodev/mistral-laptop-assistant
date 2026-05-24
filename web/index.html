@@ -38,6 +38,11 @@
           <span class="p-label">Veronica</span>
           <span class="p-sub">Research</span>
         </button>
+        <button class="persona-btn" data-persona="friday" id="btnFriday">
+          <span class="p-icon">🛠️</span>
+          <span class="p-label">Friday</span>
+          <span class="p-sub">Coding</span>
+        </button>
       </div>
 
       <button id="newChat" class="btn-new-chat">
@@ -51,6 +56,7 @@
         <button class="nav-btn" data-tab="history">History</button>
         <button class="nav-btn" data-tab="jobs">Jobs</button>
         <button class="nav-btn" data-tab="memory">Memory</button>
+        <button class="nav-btn" data-tab="settings">Settings</button>
       </nav>
 
       <!-- Chat settings panel -->
@@ -117,6 +123,78 @@
       <section class="tab-pane hidden" data-pane="memory">
         <ul id="memoryList" class="item-list"></ul>
         <p class="hint-text">Say "remember that my work folder is ~/projects/acme"</p>
+      </section>
+
+      <!-- Settings tab -->
+      <section class="tab-pane hidden" data-pane="settings">
+        <!-- API key pool -->
+        <div class="settings-section">
+          <header class="settings-head">
+            <span class="settings-title">API keys</span>
+            <span class="settings-sub" id="keyCount">—</span>
+          </header>
+          <p class="hint-text">
+            Add as many Mistral keys as you like. They're tried in order;
+            on a 401 / 429 the agent rotates to the next one automatically.
+          </p>
+          <ul id="keyList" class="key-list"></ul>
+          <form id="keyForm" class="key-form" autocomplete="off">
+            <input
+              type="text"
+              id="keyLabel"
+              class="key-input key-label-input"
+              placeholder="Label (optional)"
+              maxlength="64"
+            />
+            <input
+              type="password"
+              id="keyValue"
+              class="key-input key-value-input"
+              placeholder="Paste a Mistral API key…"
+              required
+              minlength="8"
+            />
+            <button type="submit" class="add-key-btn">Add key</button>
+          </form>
+          <p class="hint-text">
+            Get keys at
+            <a href="https://console.mistral.ai/" target="_blank" rel="noopener">console.mistral.ai</a>.
+            Stored locally in <code>~/.mistral_assistant_keys.json</code> (chmod&nbsp;600).
+          </p>
+        </div>
+
+        <!-- Defaults -->
+        <div class="settings-section">
+          <header class="settings-head">
+            <span class="settings-title">Defaults</span>
+          </header>
+
+          <div class="settings-row">
+            <label class="panel-label" for="settingsPersona">Persona</label>
+            <div class="persona-radio" id="settingsPersona"></div>
+          </div>
+
+          <div class="settings-row">
+            <label class="panel-label" for="settingsModel">Default model</label>
+            <select id="settingsModel" class="panel-select"></select>
+          </div>
+
+          <div class="settings-row">
+            <label class="panel-label">Safety</label>
+            <div class="safety-btns" id="settingsSafety">
+              <button type="button" class="safety-btn" data-mode="strict">strict</button>
+              <button type="button" class="safety-btn" data-mode="normal">normal</button>
+              <button type="button" class="safety-btn" data-mode="yolo">yolo</button>
+            </div>
+          </div>
+
+          <div class="settings-row inline">
+            <label class="panel-label">
+              <input type="checkbox" id="settingsTts" />
+              Enable text-to-speech
+            </label>
+          </div>
+        </div>
       </section>
 
       <!-- Footer -->

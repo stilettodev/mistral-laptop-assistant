@@ -19,12 +19,18 @@ def get_client(api_key: str | None = None) -> Mistral:
     """Return a Mistral SDK client.
 
     A per-process client is fine because the SDK is thread-safe and our
-    workload is mostly I/O bound.
+    workload is mostly I/O bound. When ``api_key`` is omitted we fall
+    back to the highest-priority key from :pyattr:`Settings.all_api_keys`
+    (UI keystore first, then env).
     """
-    key = api_key or settings.mistral_api_key
+    key = api_key
+    if not key:
+        keys = settings.all_api_keys
+        key = keys[0] if keys else ""
     if not key:
         raise RuntimeError(
-            "No Mistral API key configured. Set MLA_MISTRAL_API_KEY in your .env file."
+            "No Mistral API key configured. Add one via the Settings tab or "
+            "set MLA_MISTRAL_API_KEY in your .env file."
         )
     return Mistral(api_key=key)
 
@@ -183,9 +189,9 @@ def list_models() -> list[dict[str, Any]]:
     """Return available Mistral models.
 
     Falls back to the curated default catalogue when the API is
-    unreachable or the key is missing.
+    unreachable or no key is available.
     """
-    if not settings.mistral_api_key:
+    if not settings.all_api_keys:
         return DEFAULT_MODELS
     try:
         client = get_client()

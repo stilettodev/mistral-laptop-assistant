@@ -63,8 +63,9 @@ def synthesize(text: str) -> tuple[bytes | None, str | None]:
 
 
 def available() -> dict[str, bool]:
-    """Best-effort capability probe – just checks the API key is set."""
+    """Best-effort capability probe – just checks any API key is available."""
+    has_key = bool(settings.all_api_keys)
     return {
-        "stt": bool(settings.mistral_api_key),
-        "tts": bool(settings.mistral_api_key) and settings.tts_enabled,
+        "stt": has_key,
+        "tts": has_key and settings.tts_enabled,
     }
