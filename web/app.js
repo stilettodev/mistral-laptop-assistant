@@ -1002,6 +1002,10 @@ function updateToolResult(data) {
 
   // Auto-expand the card so results are visible immediately.
   card.classList.add("open");
+
+  // Collapse the args pre so the result is front-and-center.
+  const argsPre = card.querySelector(".args");
+  if (argsPre) argsPre.style.display = "none";
 }
 
 function stripPreview(obj) {
