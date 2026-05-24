@@ -999,6 +999,9 @@ function updateToolResult(data) {
     img.src = "data:image/png;base64," + data.result.preview_base64;
     body.appendChild(img);
   }
+
+  // Auto-expand the card so results are visible immediately.
+  card.classList.add("open");
 }
 
 function stripPreview(obj) {

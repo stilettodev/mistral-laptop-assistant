@@ -123,8 +123,10 @@ def _serialize_messages(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
 _FINISH_GUIDANCE = (
     " The above are the actual tool results. Your job now is to deliver the "
     "complete, useful answer to the user. Do NOT say 'Veronica here' or similar "
-    "intro phrases followed by nothing. Give the full answer — facts, sources, "
-    "key points, relevant details — right now. Do NOT call more tools."
+    "intro phrases followed by nothing. Do NOT dismiss, apologize for, or ignore "
+    "tool results. Include the actual data/values verbatim in your answer. "
+    "Give the full answer — facts, sources, key points, relevant details — "
+    "right now. Do NOT call more tools."
 )
 
 
