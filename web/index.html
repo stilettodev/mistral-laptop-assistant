@@ -6,138 +6,147 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=DM+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/static/styles.css" />
-    <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect rx='14' width='64' height='64' fill='%234a3f8f'/><text x='50%25' y='62%25' text-anchor='middle' font-family='Georgia,serif' font-size='38' font-style='italic' fill='%23e8e4f4'>m</text></svg>" />
+    <link rel="icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect rx='14' width='64' height='64' fill='%230e0d0c'/><text x='50%25' y='58%25' text-anchor='middle' font-family='Georgia,serif' font-size='40' font-style='italic' fill='%23ff7a3c'>m</text></svg>" />
   </head>
   <body>
+    <!-- Background atmosphere -->
+    <div class="bg-glow bg-glow-1"></div>
+    <div class="bg-glow bg-glow-2"></div>
+    <div class="bg-grid"></div>
+
     <!-- Sidebar -->
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-icon">m</div>
+        <div class="brand-mark">m</div>
         <div class="brand-text">
-          <div class="brand-title">MLA</div>
-          <div class="brand-sub">Mistral Assistant</div>
+          <span class="brand-title"><em>Mistral</em></span>
+          <span class="brand-sub">Laptop Assistant</span>
         </div>
       </div>
 
-      <!-- Persona Selector -->
-      <div class="persona-row">
+      <!-- Persona switcher -->
+      <div class="persona-switcher">
         <button class="persona-btn active" data-persona="jarvis" id="btnJarvis">
           <span class="p-icon">☕</span>
-          <span class="p-name">Jarvis</span>
-          <span class="p-desc">Casual chat</span>
+          <span class="p-label">Jarvis</span>
+          <span class="p-sub">General</span>
         </button>
         <button class="persona-btn" data-persona="veronica" id="btnVeronica">
           <span class="p-icon">🔬</span>
-          <span class="p-name">Veronica</span>
-          <span class="p-desc">Research mode</span>
+          <span class="p-label">Veronica</span>
+          <span class="p-sub">Research</span>
         </button>
       </div>
 
-      <button id="newChat" class="btn-new">
+      <button id="newChat" class="btn-new-chat">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         New conversation
       </button>
 
-      <!-- Navigation tabs -->
-      <nav class="nav-tabs">
-        <button class="nav-tab active" data-tab="chat">Chat</button>
-        <button class="nav-tab" data-tab="history">History</button>
-        <button class="nav-tab" data-tab="jobs">Jobs</button>
-        <button class="nav-tab" data-tab="memory">Memory</button>
+      <!-- Section nav -->
+      <nav class="section-nav">
+        <button class="nav-btn active" data-tab="chat">Chat</button>
+        <button class="nav-btn" data-tab="history">History</button>
+        <button class="nav-btn" data-tab="jobs">Jobs</button>
+        <button class="nav-btn" data-tab="memory">Memory</button>
       </nav>
 
-      <!-- Tab: Chat panel -->
+      <!-- Chat settings panel -->
       <section class="tab-pane" data-pane="chat">
-        <div class="panel-section">
-          <label class="panel-label">Model</label>
-          <select id="modelPicker" class="select-field"></select>
-          <p id="modelHint" class="hint-text"></p>
-        </div>
+        <div class="panel-group">
+          <div class="panel-item">
+            <label class="panel-label">Model</label>
+            <select id="modelPicker" class="panel-select"></select>
+          </div>
 
-        <div class="panel-section">
-          <label class="panel-label">Safety</label>
-          <div class="seg-group">
-            <button class="seg-btn" data-mode="strict">strict</button>
-            <button class="seg-btn active" data-mode="normal">normal</button>
-            <button class="seg-btn" data-mode="yolo">yolo</button>
+          <div class="panel-item">
+            <label class="panel-label">Safety</label>
+            <div class="safety-btns">
+              <button class="safety-btn" data-mode="strict">strict</button>
+              <button class="safety-btn active" data-mode="normal">normal</button>
+              <button class="safety-btn" data-mode="yolo">yolo</button>
+            </div>
+          </div>
+
+          <div class="panel-item voice-row">
+            <label class="panel-label">
+              <input type="checkbox" id="speakToggle" />
+              Speak answers
+            </label>
           </div>
         </div>
 
-        <div class="panel-section">
-          <label class="toggle-label">
-            <input type="checkbox" id="speakToggle" class="toggle-input" />
-            Speak answers aloud
-          </label>
-        </div>
-
-        <div class="panel-section">
-          <label class="panel-label">Try it</label>
-          <ul class="example-list" id="examples">
-            <li data-q="Summarize what's on my Desktop">📄 Summarize my Desktop</li>
-            <li data-q="Take a screenshot and save it to ~/screen.png">📸 Take a screenshot</li>
-            <li data-q="Show me my running processes">⚙️ Running processes</li>
-            <li data-q="Find files larger than 10MB in Downloads">🔍 Large files in Downloads</li>
-            <li data-q="Show me the weather forecast">🌤️ Weather forecast</li>
-          </ul>
+        <!-- Quick actions -->
+        <div class="quick-section">
+          <p class="quick-title">Try these</p>
+          <div class="quick-cards" id="examples">
+            <button class="quick-card" data-q="Summarize what's on my Desktop">
+              <span class="qc-icon">📄</span>
+              <span class="qc-text">Summarize Desktop</span>
+            </button>
+            <button class="quick-card" data-q="Take a screenshot and save it to ~/screen.png">
+              <span class="qc-icon">📸</span>
+              <span class="qc-text">Screenshot</span>
+            </button>
+            <button class="quick-card" data-q="What processes are using the most memory?">
+              <span class="qc-icon">⚙️</span>
+              <span class="qc-text">Top processes</span>
+            </button>
+            <button class="quick-card" data-q="Find files larger than 10MB in ~/Downloads">
+              <span class="qc-icon">🔍</span>
+              <span class="qc-text">Large files</span>
+            </button>
+          </div>
         </div>
       </section>
 
       <!-- History tab -->
       <section class="tab-pane hidden" data-pane="history">
-        <div class="panel-section">
-          <label class="panel-label">Saved chats</label>
-          <ul id="historyList" class="list-rows"></ul>
-        </div>
+        <ul id="historyList" class="item-list"></ul>
       </section>
 
       <!-- Jobs tab -->
       <section class="tab-pane hidden" data-pane="jobs">
-        <div class="panel-section">
-          <label class="panel-label">Recurring jobs</label>
-          <ul id="jobsList" class="list-rows"></ul>
-          <p class="hint-text">Ask "every weekday at 9am run git pull" to add jobs.</p>
-        </div>
+        <ul id="jobsList" class="item-list"></ul>
+        <p class="hint-text">Ask "every weekday at 9am run git pull" to schedule jobs.</p>
       </section>
 
       <!-- Memory tab -->
       <section class="tab-pane hidden" data-pane="memory">
-        <div class="panel-section">
-          <label class="panel-label">Long-term memory</label>
-          <ul id="memoryList" class="list-rows"></ul>
-          <p class="hint-text">Say "remember that my work folder is ~/projects/acme"</p>
-        </div>
+        <ul id="memoryList" class="item-list"></ul>
+        <p class="hint-text">Say "remember that my work folder is ~/projects/acme"</p>
       </section>
 
-      <!-- Footer status -->
+      <!-- Footer -->
       <footer class="sidebar-footer">
-        <div class="status-bar" id="statusBar">
-          <div class="status-dot" id="statusDot"></div>
-          <span class="status-text" id="statusText">connecting…</span>
+        <div class="agent-status">
+          <div class="status-indicator">
+            <div class="status-dot pulse-soft" id="statusDot"></div>
+            <span class="status-label" id="statusText">connecting</span>
+          </div>
+          <div class="trust-badge">🔒 local only</div>
         </div>
       </footer>
     </aside>
 
-    <!-- Main chat area -->
-    <main class="chat-area">
-      <!-- Welcome header -->
-      <div class="welcome-header" id="welcomeHeader">
-        <div class="welcome-badge" id="welcomeBadge">☕ Jarvis</div>
-        <h1 class="welcome-title">Your personal assistant,<br /><em>running locally.</em></h1>
-        <p class="welcome-sub">Ask me to read files, run commands, search the web, schedule tasks, or anything else on your laptop.</p>
-        <div class="quick-actions">
-          <button class="qa-btn" data-q="Write a Python script to rename all files in the current folder to snake_case">
-            <span>📄</span> Write a script
-          </button>
-          <button class="qa-btn" data-q="Show me disk usage breakdown on this machine">
-            <span>💾</span> Check disk usage
-          </button>
-          <button class="qa-btn" data-q="What processes are using the most memory right now?">
-            <span>⚙️</span> Top processes
-          </button>
+    <!-- Main content -->
+    <main class="main">
+      <!-- Top bar -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <div class="model-chip" id="modelChip">
+            <span class="chip-label">auto</span>
+          </div>
         </div>
-      </div>
+        <div class="topbar-center" id="thinkingBar">
+          <!-- Thinking indicator -->
+        </div>
+        <div class="topbar-right">
+          <span class="system-info" id="systemInfo"></span>
+        </div>
+      </header>
 
       <!-- Chat thread -->
       <div id="thread" class="thread" aria-live="polite"></div>
@@ -146,21 +155,21 @@
       <div class="composer-wrap">
         <div id="attachStrip" class="attach-strip hidden"></div>
         <form id="composer" class="composer" autocomplete="off">
-          <div class="composer-inner">
-            <button type="button" id="micBtn" class="icon-btn" title="Voice input" aria-label="Record voice">
+          <div class="composer-field">
+            <button type="button" id="micBtn" class="field-btn" title="Voice input">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
             </button>
-            <button type="button" id="attachBtn" class="icon-btn" title="Attach image" aria-label="Attach image">
+            <button type="button" id="attachBtn" class="field-btn" title="Attach image">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.42 17.41a2 2 0 1 1-2.83-2.83l8.49-8.49"/></svg>
               <input type="file" id="fileInput" accept="image/*" hidden multiple />
             </button>
-            <textarea id="input" placeholder="Ask me anything…" rows="1" autofocus></textarea>
+            <textarea id="input" class="composer-input" placeholder="Ask anything…" rows="1" autofocus></textarea>
             <button type="submit" id="sendBtn" class="send-btn">
               <span>Send</span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 12l18-9-7 18-2-7-9-2z"/></svg>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M3 12l18-9-7 18-2-7-9-2z"/></svg>
             </button>
           </div>
-          <div class="composer-hint">⌘ Enter to send · drop images to attach</div>
+          <div class="composer-meta">⌘ Enter to send · drop images to attach</div>
         </form>
       </div>
     </main>
