@@ -756,8 +756,7 @@ async function runRequest(payload, extraConfirmations = {}) {
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let placeholderUsed = false;
-  let currentAssistant = placeholder;
+  let currentAssistant = null;  // null until first text event — tool cards go first
   let lastFinal = "";
 
   while (true) {
@@ -800,8 +799,12 @@ async function runRequest(payload, extraConfirmations = {}) {
           }
           if (currentAssistant) {
             currentAssistant.querySelector(".body").innerHTML = renderMarkdown(evt.data);
-            placeholderUsed = true;
             lastFinal = evt.data;
+            if (evt.speaker) {
+              currentAssistant.querySelector(".avatar").textContent = personaLetter(evt.speaker);
+            }
+          } else {
+            currentAssistant = addAssistantMessage(evt.data);
             if (evt.speaker) {
               currentAssistant.querySelector(".avatar").textContent = personaLetter(evt.speaker);
             }
@@ -812,10 +815,10 @@ async function runRequest(payload, extraConfirmations = {}) {
           if (state.thinkingVisible) {
             $("thinkingBar").textContent = `⚙ ${evt.data.name}(${JSON.stringify(evt.data.arguments)})`;
           }
-          if (!placeholderUsed && currentAssistant) {
+          if (currentAssistant && !currentAssistant.classList.contains("tool-card")) {
             currentAssistant.remove();
-            currentAssistant = null;
           }
+          currentAssistant = null;  // next message creates a fresh bubble
           renderToolCall(evt.data);
           break;
 
@@ -824,16 +827,16 @@ async function runRequest(payload, extraConfirmations = {}) {
             $("thinkingBar").textContent = "processing…";
           }
           updateToolResult(evt.data);
+          // Show a "processing result…" bubble while we wait for synthesis.
           if (!currentAssistant) {
             currentAssistant = addAssistantMessage("");
             currentAssistant.querySelector(".body").innerHTML =
               `<span class="typing">processing result…</span>`;
-            placeholderUsed = false;
           }
           break;
 
         case "confirmation_needed":
-          if (currentAssistant && !placeholderUsed) {
+          if (currentAssistant) {
             currentAssistant.remove();
             currentAssistant = null;
           }
@@ -847,8 +850,12 @@ async function runRequest(payload, extraConfirmations = {}) {
           }
           if (currentAssistant) {
             currentAssistant.querySelector(".body").innerHTML = renderMarkdown(evt.data);
-            placeholderUsed = true;
             lastFinal = evt.data;
+            if (evt.speaker) {
+              currentAssistant.querySelector(".avatar").textContent = personaLetter(evt.speaker);
+            }
+          } else {
+            currentAssistant = addAssistantMessage(evt.data);
             if (evt.speaker) {
               currentAssistant.querySelector(".avatar").textContent = personaLetter(evt.speaker);
             }
@@ -857,7 +864,10 @@ async function runRequest(payload, extraConfirmations = {}) {
 
         case "error":
           showError(typeof evt.data === "string" ? evt.data : JSON.stringify(evt.data));
-          if (currentAssistant && !placeholderUsed) currentAssistant.remove();
+          if (currentAssistant) {
+            currentAssistant.remove();
+            currentAssistant = null;
+          }
           break;
 
         case "done":
@@ -870,9 +880,8 @@ async function runRequest(payload, extraConfirmations = {}) {
     }
   }
 
-  if (currentAssistant && !placeholderUsed && currentAssistant.querySelector(".typing")) {
-    currentAssistant.remove();
-  }
+  // If we only showed tool cards (no text bubble at all), currentAssistant is null.
+  // Do nothing — the tool cards are already in the DOM.
 
   if (payload.speak && lastFinal) speakText(lastFinal);
 
