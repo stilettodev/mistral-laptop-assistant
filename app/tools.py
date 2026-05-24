@@ -557,6 +557,120 @@ def hash_file(path: str, algorithm: str = "sha256") -> dict[str, Any]:
         return _result(False, error=str(exc))
 
 
+# ---------------------------------------------------------------------------
+# Text / encoding utilities
+# ---------------------------------------------------------------------------
+
+
+def hash_text(text: str, algorithm: str = "sha256") -> dict[str, Any]:
+    """Compute a hash of a text string."""
+    try:
+        import hashlib
+        h = hashlib.new(algorithm)
+        h.update(text.encode())
+        return _result(True, algorithm=algorithm, hash=h.hexdigest(), chars=len(text))
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def base64_encode(text: str) -> dict[str, Any]:
+    """Encode text as base64."""
+    try:
+        b = base64.b64encode(text.encode()).decode()
+        return _result(True, encoded=b)
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def base64_decode(data: str) -> dict[str, Any]:
+    """Decode a base64 string back to text."""
+    try:
+        return _result(True, decoded=base64.b64decode(data.encode()).decode())
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def json_validate(text: str) -> dict[str, Any]:
+    """Validate a JSON string and return pretty-printed version."""
+    try:
+        parsed = json.loads(text)
+        return _result(True, valid=True, pretty=json.dumps(parsed, indent=2))
+    except json.JSONDecodeError as exc:
+        return _result(
+            False, valid=False,
+            error=f"line {exc.lineno}, col {exc.colno}: {exc.msg}",
+        )
+
+
+def grep_file(path: str, pattern: str, case_sensitive: bool = False) -> dict[str, Any]:
+    """Search for ``pattern`` in a text file, return matching lines."""
+    try:
+        import re
+        p = _resolve_path(path)
+        flags = 0 if case_sensitive else re.IGNORECASE
+        compiled = re.compile(pattern, flags)
+        matches, line_no = [], 0
+        for line_no, line in enumerate(p.read_text().splitlines(), 1):
+            if compiled.search(line):
+                matches.append({"line": line_no, "text": line.rstrip()})
+                if len(matches) >= 100:
+                    break
+        return _result(
+            True, path=str(p), pattern=pattern,
+            matches=matches, count=len(matches), total_lines=line_no,
+        )
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def line_count(path: str) -> dict[str, Any]:
+    """Count lines, words, and characters in a text file."""
+    try:
+        p = _resolve_path(path)
+        content = p.read_text()
+        lines = content.splitlines()
+        words = content.split()
+        return _result(
+            True, path=str(p),
+            lines=len(lines), words=len(words), chars=len(content),
+        )
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def extract_lines(path: str, start: int = 1, end: int = -1) -> dict[str, Any]:
+    """Extract a range of lines from a text file (1-indexed, inclusive)."""
+    try:
+        p = _resolve_path(path)
+        lines = p.read_text().splitlines()
+        s = max(1, min(start, len(lines)))
+        e = len(lines) if end == -1 else max(s, min(end, len(lines)))
+        excerpt = "\n".join(lines[s - 1 : e])
+        return _result(
+            True, path=str(p), start_line=s, end_line=e, excerpt=excerpt,
+        )
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def url_encode(text: str, safe: str = "") -> dict[str, Any]:
+    """URL-encode a text string."""
+    try:
+        import urllib.parse
+        return _result(True, encoded=urllib.parse.quote(text, safe=safe))
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def url_decode(text: str) -> dict[str, Any]:
+    """URL-decode a percent-encoded string."""
+    try:
+        import urllib.parse
+        return _result(True, decoded=urllib.parse.unquote(text))
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
 def compare_files(path1: str, path2: str) -> dict[str, Any]:
     """Compare two files byte-for-byte or line-by-line."""
     try:
@@ -1051,6 +1165,15 @@ TOOLS: dict[str, Any] = {
         file_size,
         count_tokens,
         hash_file,
+        hash_text,
+        base64_encode,
+        base64_decode,
+        json_validate,
+        grep_file,
+        line_count,
+        extract_lines,
+        url_encode,
+        url_decode,
         compare_files,
         make_directory,
         copy_file,
