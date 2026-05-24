@@ -14,10 +14,12 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import os
 import platform
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -410,6 +412,201 @@ def screenshot(save_path: str = "") -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# HTTP / networking
+# ---------------------------------------------------------------------------
+
+
+def read_url(url: str, max_bytes: int = 50_000) -> dict[str, Any]:
+    """Fetch the text content of any URL (GET request)."""
+    try:
+        import httpx
+
+        with httpx.Client(timeout=10.0, follow_redirects=True) as client:
+            resp = client.get(url)
+        text = resp.text[:max_bytes]
+        truncated = len(resp.text) > max_bytes
+        return _result(
+            True,
+            url=url,
+            status_code=resp.status_code,
+            content_type=resp.headers.get("content-type", ""),
+            text=text,
+            truncated=truncated,
+            total_bytes=len(resp.text),
+        )
+    except Exception as exc:
+        return _result(False, error=f"read_url failed: {exc}")
+
+
+def get_public_ip() -> dict[str, Any]:
+    """Return the machine's external/public IP address."""
+    try:
+        import httpx
+
+        with httpx.Client(timeout=8.0) as client:
+            ip = client.get("https://api.ipify.org", params={"format": "text"}).text.strip()
+        return _result(True, ip=ip)
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def ping_host(hostname: str, count: int = 4) -> dict[str, Any]:
+    """Ping a hostname or IP and return packet stats.
+
+    Works cross-platform using system ping command.
+    """
+    try:
+        import shlex
+
+        args = ["-c", str(count)] if sys.platform != "win32" else ["-n", str(count)]
+        cmd = ["ping"] + args + [hostname]
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=count * 5 + 5
+        )
+        return _result(
+            proc.returncode == 0,
+            hostname=hostname,
+            returncode=proc.returncode,
+            output=_truncate(proc.stdout + proc.stderr, 2000),
+        )
+    except subprocess.TimeoutExpired:
+        return _result(False, error=f"ping timed out after {count * 5}s")
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def dns_lookup(hostname: str) -> dict[str, Any]:
+    """Resolve a hostname to its IP address(es)."""
+    try:
+        addrs = sorted(set(r[-1][0] for r in socket.getaddrinfo(hostname, None)))
+        return _result(True, hostname=hostname, addresses=addrs, count=len(addrs))
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# File system helpers
+# ---------------------------------------------------------------------------
+
+
+def find_files(directory: str, pattern: str = "*", max_results: int = 20) -> dict[str, Any]:
+    """Recursively search for files matching ``pattern`` (glob) under ``directory``."""
+    try:
+        root = _resolve_path(directory)
+        matches = list(root.rglob(pattern))
+        dirs, files = [], []
+        for p in matches:
+            if p.is_dir():
+                dirs.append(str(p))
+            else:
+                files.append(str(p))
+            if len(files) + len(dirs) >= max_results:
+                break
+        return _result(
+            True,
+            directory=str(root),
+            pattern=pattern,
+            files=files,
+            directories=dirs,
+            count=len(files) + len(dirs),
+            truncated=len(matches) > max_results,
+        )
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def file_size(path: str) -> dict[str, Any]:
+    """Return size, creation time, and modification time for a path."""
+    try:
+        p = _resolve_path(path)
+        stat = p.stat()
+        return _result(
+            True,
+            path=str(p),
+            size_bytes=stat.st_size,
+            created=int(stat.st_ctime),
+            modified=int(stat.st_mtime),
+            is_file=p.is_file(),
+            is_dir=p.is_dir(),
+        )
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def count_tokens(text: str) -> dict[str, Any]:
+    """Estimate the number of tokens in a text string (chars / 4 approx)."""
+    try:
+        n = len(text) // 4
+        return _result(True, chars=len(text), estimated_tokens=n)
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Bookmarks
+# ---------------------------------------------------------------------------
+
+_BOOKMARK_FILE = Path(settings.workspace_dir) / ".bookmarks.json"
+
+
+def _load_bookmarks() -> dict[str, str]:
+    try:
+        return json.loads(_BOOKMARK_FILE.read_text())
+    except Exception:
+        return {}
+
+
+def _save_bookmarks(bm: dict[str, str]) -> None:
+    _BOOKMARK_FILE.write_text(json.dumps(bm, indent=2))
+
+
+def save_bookmark(url: str, label: str) -> dict[str, Any]:
+    """Save a URL with a short label for quick access."""
+    try:
+        bm = _load_bookmarks()
+        bm[label.lower().strip()] = url
+        _save_bookmarks(bm)
+        return _result(True, label=label.lower().strip(), url=url, count=len(bm))
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def list_bookmarks() -> dict[str, Any]:
+    """List all saved bookmarks (label → URL)."""
+    try:
+        bm = _load_bookmarks()
+        return _result(True, count=len(bm), bookmarks=bm)
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def open_bookmark(label: str) -> dict[str, Any]:
+    """Open a bookmark by its label."""
+    try:
+        bm = _load_bookmarks()
+        url = bm.get(label.lower().strip())
+        if not url:
+            return _result(False, error=f"No bookmark found for label '{label}'")
+        webbrowser.open(url)
+        return _result(True, label=label.lower().strip(), url=url)
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def delete_bookmark(label: str) -> dict[str, Any]:
+    """Delete a saved bookmark by label."""
+    try:
+        bm = _load_bookmarks()
+        if label.lower().strip() not in bm:
+            return _result(False, error=f"No bookmark found for '{label}'")
+        del bm[label.lower().strip()]
+        _save_bookmarks(bm)
+        return _result(True, label=label.lower().strip(), count=len(bm))
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+# ---------------------------------------------------------------------------
 # Web search
 # ---------------------------------------------------------------------------
 
@@ -681,6 +878,20 @@ TOOLS: dict[str, Any] = {
         list_available_skills,
         install_skill,
         uninstall_skill,
+        # HTTP / networking
+        read_url,
+        get_public_ip,
+        ping_host,
+        dns_lookup,
+        # File system helpers
+        find_files,
+        file_size,
+        count_tokens,
+        # Bookmarks
+        save_bookmark,
+        list_bookmarks,
+        open_bookmark,
+        delete_bookmark,
     ]
 }
 
