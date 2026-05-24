@@ -32,7 +32,9 @@ CODE_HINTS = re.compile(
     r"npm|pip|cargo|gradle|maven|"
     r"unit test|pytest|jest|"
     r"regex|sql|api endpoint|"
-    r"shell|bash|terminal command|kubectl|docker)\b",
+    r"shell|bash|terminal command|kubectl|docker|"
+    # Short shell commands (2-4 chars, all-lowercase).
+    r"\bls\b|\bcd\b|\bcp\b|\bmv\b|\brm\b|\bcat\b|\bgrep\b|\becho\b)\b",
     re.IGNORECASE,
 )
 
@@ -83,14 +85,20 @@ def heuristic_route(prompt: str) -> RouteResult | None:
             "magistral-medium-latest", "explicit reasoning request", "heuristic"
         )
 
-    if QUICK_HINTS.search(prompt) or word_count <= 6:
-        return RouteResult(
-            "mistral-small-latest", "short/simple request", "heuristic"
-        )
-
-    if HEAVY_HINTS.search(prompt) or word_count > 80:
+    # Heavy: complex / research tasks always go to a strong model.
+    # Word count alone (>80) is a weak signal; only use it as a tiebreaker.
+    if HEAVY_HINTS.search(prompt):
         return RouteResult(
             "mistral-large-latest", "complex / multi-step request", "heuristic"
+        )
+
+    # Only classify as QUICK if the prompt is genuinely trivial:
+    # ≤ 4 words, no question marks, no context-dependent language.
+    # Follow-up questions like "where are they", "show me the results", etc.
+    # are NOT quick — they need context and should go to a larger model.
+    if word_count <= 4 and QUICK_HINTS.search(prompt):
+        return RouteResult(
+            "mistral-small-latest", "short/simple request", "heuristic"
         )
 
     return None

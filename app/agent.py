@@ -118,11 +118,13 @@ def _serialize_messages(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-# Brief nudge appended after tool-result batches so the model gives a
-# concise final answer instead of calling more tools.
+# Guidance appended after tool-result batches so the model gives a complete answer.
+# Must be strong enough to override the model's "just intro" tendency.
 _FINISH_GUIDANCE = (
-    " — Tool results are above. Provide a short, direct final answer now. "
-    "Do NOT call any more tools."
+    " The above are the actual tool results. Your job now is to deliver the "
+    "complete, useful answer to the user. Do NOT say 'Veronica here' or similar "
+    "intro phrases followed by nothing. Give the full answer — facts, sources, "
+    "key points, relevant details — right now. Do NOT call more tools."
 )
 
 
@@ -173,11 +175,11 @@ async def _synthesise_and_stream(
             for tc in raw_tc
         ]
         history.append({"role": "assistant", "content": buffer, "tool_calls": tool_calls_out})
-        return events, tool_calls_out
+        return events, tool_calls_out, persona
     else:
         history.append({"role": "assistant", "content": buffer})
-        events.append({"type": "final", "data": buffer})
-        return events, []
+        events.append({"type": "final", "data": buffer, "speaker": persona})
+        return events, [], persona
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +283,7 @@ async def run_agent(
     mc = MultiKeyClient()
     tools_schema = build_tool_schemas()
     step = 0
+    step_retries = 0
 
     while step < settings.max_agent_steps:
         # Execute all pending tool calls as one batch (they are a consequence
@@ -305,7 +308,28 @@ async def run_agent(
                 )
             except Exception as exc:
                 err_str = str(exc).lower()
-                if any(x in err_str for x in ["401", "unauthorized", "403", "forbidden"])                        or any(x in err_str for x in ["429", "rate limit", "quota"]):
+                # Retry network errors up to 3 times (DNS, timeout, connection reset).
+                is_network = any(
+                    x in err_str
+                    for x in [
+                        "getaddrinfo",
+                        "timeout",
+                        "connection",
+                        "network",
+                        "eai_noname",
+                        "11001",
+                        "socket",
+                    ]
+                )
+                if getattr(exc, "errno", 0) in (-3, 101, 104, 110) or is_network:
+                    if step_retries < 3:
+                        step_retries += 1
+                        audit("retry", {"cid": conversation_id, "attempt": step_retries, "err": str(exc)})
+                        yield {"type": "status", "data": f"Network issue — retrying (attempt {step_retries})…"}
+                        await asyncio.sleep(1.5 * step_retries)
+                        continue
+                # Auth / quota — try rotating to next key.
+                if any(x in err_str for x in ["401", "unauthorized", "403", "forbidden", "429", "rate limit", "quota"]):
                     next_key = mc.rotate()
                     if next_key:
                         audit("key_rotate", {"cid": conversation_id, "from": mc.current_key[:6]})
@@ -338,10 +362,10 @@ async def run_agent(
             )
 
             if assistant_text:
-                yield {"type": "message", "data": assistant_text}
+                yield {"type": "message", "data": assistant_text, "speaker": persona}
 
             if not tool_calls:
-                yield {"type": "final", "data": assistant_text}
+                yield {"type": "final", "data": assistant_text, "speaker": persona}
                 audit("chat_end", {"cid": conversation_id, "steps": step})
                 CONVERSATIONS.persist(conversation_id)
                 return
@@ -448,7 +472,7 @@ async def run_agent(
             # After batch execution, make the synthesis call so the user sees
             # the model's final answer. This does NOT charge a step.
             if not needs_confirm:
-                syn_events, new_tc = await _synthesise_and_stream(
+                syn_events, new_tc, _ = await _synthesise_and_stream(
                     model, tools_schema, history, mc
                 )
                 for ev in syn_events:

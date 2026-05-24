@@ -166,9 +166,19 @@ def test_router_code_keywords() -> None:
 
 
 def test_router_short_prompt_picks_small() -> None:
-    r = heuristic_route("ls")
+    # Short query (≤4 words) with no context-dependent language → small.
+    r = heuristic_route("what time is it")
     assert r is not None
-    assert "small" in r.model or "ministral" in r.model
+    assert "small" in r.model
+
+    # Shell commands are code tasks → codestral (not quick).
+    r2 = heuristic_route("ls")
+    assert r2 is not None
+    assert "codestral" in r2.model
+
+    # Short but context-dependent — falls through to LLM router (heuristic returns None).
+    r3 = heuristic_route("where are they")
+    assert r3 is None  # no heuristic match, LLM router handles it
 
 
 def test_router_vision_keyword() -> None:

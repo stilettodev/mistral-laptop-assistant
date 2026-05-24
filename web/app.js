@@ -795,10 +795,16 @@ async function runRequest(payload, extraConfirmations = {}) {
           break;
 
         case "message":
+          if (state.thinkingVisible) {
+            $("thinkingBar").textContent = "";
+          }
           if (currentAssistant) {
             currentAssistant.querySelector(".body").innerHTML = renderMarkdown(evt.data);
             placeholderUsed = true;
             lastFinal = evt.data;
+            if (evt.speaker) {
+              currentAssistant.querySelector(".avatar").textContent = personaLetter(evt.speaker);
+            }
           }
           break;
 
@@ -836,10 +842,16 @@ async function runRequest(payload, extraConfirmations = {}) {
           break;
 
         case "final":
+          if (state.thinkingVisible) {
+            $("thinkingBar").textContent = "";
+          }
           if (currentAssistant) {
             currentAssistant.querySelector(".body").innerHTML = renderMarkdown(evt.data);
             placeholderUsed = true;
             lastFinal = evt.data;
+            if (evt.speaker) {
+              currentAssistant.querySelector(".avatar").textContent = personaLetter(evt.speaker);
+            }
           }
           break;
 
