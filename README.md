@@ -80,6 +80,17 @@ curl -LsSf https://yourrepo/install.sh | bash
 cd ~/mistral-laptop-assistant && uv run mla --open
 ```
 
+### Windows
+
+```powershell
+# One-line install + launch (from an existing clone)
+irm https://raw.githubusercontent.com/stilettodev/mistral-laptop-assistant/main/install.ps1 | iex
+
+# Or manually
+uv sync
+uv run mla -k YOUR_KEY --open
+```
+
 Or from an existing clone:
 
 ```bash
