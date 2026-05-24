@@ -103,6 +103,7 @@ def _serialize_messages(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         }
                         for tc in msg["tool_calls"]
                     ],
+                    "name": msg.get("speaker") or None,
                 }
             )
         elif msg["role"] == "user" and msg.get("images"):
@@ -113,25 +114,32 @@ def _serialize_messages(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
             for img_url in msg["images"]:
                 parts.append({"type": "image_url", "image_url": img_url})
             out.append({"role": "user", "content": parts})
+        elif msg["role"] == "tool":
+            out.append(
+                {
+                    "role": "tool",
+                    "name": msg.get("name", ""),
+                    "tool_call_id": msg["tool_call_id"],
+                    "content": msg["content"],
+                }
+            )
         else:
-            out.append({"role": msg["role"], "content": msg.get("content") or ""})
+            out.append(
+                {
+                    "role": msg["role"],
+                    "content": msg.get("content") or "",
+                    "name": msg.get("speaker") or None,
+                }
+            )
     return out
 
 
-# Guidance appended after tool-result batches so the model gives a complete answer.
-# Must be strong enough to override the model's "just intro" tendency.
 _FINISH_GUIDANCE = (
-    " The above are the actual tool results. Your job is to give the user "
-    "the complete, useful answer RIGHT NOW. Do NOT say 'Veronica here' or similar "
-    "intro phrases. Do NOT dismiss or ignore tool results. Do NOT apologize. "
-    "Do NOT say 'the information is above' or 'as shown above' or 'based on the "
-    "results'. Instead, embed the actual data directly in your answer: "
-    "list each source title, include the URL, quote the key snippets. "
-    "For web search: list every result as '• [Title](URL): snippet text'. "
-    "For data/time: say 'The current time is [time]'. "
-    "For commands: paste the actual output lines. "
-    "Give facts, figures, and key points — not descriptions of facts. "
-    "Do NOT call more tools. Do NOT ask if the user wants more."
+    " Output ONLY a markdown list. No intro, no apology, no extra sentences. "
+    "Format each result as:\n"
+    "- <title>: <url>\n\n"
+    "Example: '- Batman vs Iron Man: https://example.com/article'\n\n"
+    "Repeat for every result returned above. Start directly with the first '-'."
 )
 
 
@@ -470,6 +478,7 @@ async def run_agent(
                     "name": tc["name"],
                     "tool_call_id": tc["id"],
                     "content": json.dumps(result, default=str),
+                    "speaker": persona,  # carry speaker through tool-result history
                 }
                 history.append(tool_result_entry)
                 yield {
