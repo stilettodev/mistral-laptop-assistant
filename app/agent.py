@@ -133,11 +133,12 @@ async def _synthesise_and_stream(
     tools_schema: list[dict[str, Any]],
     history: list[dict[str, Any]],
     mc: Any,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    persona: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str]:
     """After tool batch: add guidance message, stream the model's final answer.
 
-    Returns (events, tool_calls). Events include 'message' delta chunks and
-    a 'final' marker if the model produced no more tool calls.
+    Returns (events, tool_calls, speaker). Events include 'message' delta chunks
+    and a 'final' marker if the model produced no more tool calls.
     tool_calls is non-empty if the model still wants to call tools (the
     caller should set pending and continue the loop).
     This does NOT charge a step.
@@ -156,7 +157,7 @@ async def _synthesise_and_stream(
     except Exception as exc:
         log.warning("synthesis call failed: %s", exc)
         history.pop()
-        return [], []
+        return [], [], persona
 
     history.pop()  # remove guidance — only keep real model output
 
@@ -166,7 +167,7 @@ async def _synthesise_and_stream(
         delta = getattr(event.choices[0].delta, "content", "") or ""
         if delta:
             buffer += delta
-            events.append({"type": "message", "data": delta})
+            events.append({"type": "message", "data": delta, "speaker": persona})
         raw_tc = getattr(event.choices[0].delta, "tool_calls", None) or raw_tc
 
     if raw_tc:
@@ -473,7 +474,7 @@ async def run_agent(
             # the model's final answer. This does NOT charge a step.
             if not needs_confirm:
                 syn_events, new_tc, _ = await _synthesise_and_stream(
-                    model, tools_schema, history, mc
+                    model, tools_schema, history, mc, persona
                 )
                 for ev in syn_events:
                     yield ev
