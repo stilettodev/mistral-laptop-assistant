@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>MLA · Mistral Laptop Assistant</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect rx='14' width='64' height='64' fill='%23ff7a3c'/><text x='50%25' y='58%25' text-anchor='middle' font-family='Georgia,serif' font-size='40' font-style='italic' fill='%23120e0a'>m</text></svg>"
+    />
+  </head>
+  <body>
+    <div class="grain"></div>
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">m</span>
+        <span class="brand-name">
+          <em>Mistral</em>
+          <span>Laptop&nbsp;Assistant</span>
+        </span>
+      </div>
+
+      <button id="newChat" class="ghost-btn">＋ New conversation</button>
+
+      <section class="panel">
+        <h3>Model</h3>
+        <select id="modelPicker"></select>
+        <p id="modelHint" class="hint"></p>
+      </section>
+
+      <section class="panel">
+        <h3>Safety</h3>
+        <div class="seg" role="tablist" id="safetySeg">
+          <button data-mode="strict" title="Ask before every change">strict</button>
+          <button data-mode="normal" class="active" title="Ask before risky changes">normal</button>
+          <button data-mode="yolo" title="No confirmations · use carefully">yolo</button>
+        </div>
+      </section>
+
+      <section class="panel examples">
+        <h3>Try…</h3>
+        <ul id="examples">
+          <li>Summarize what's on my Desktop</li>
+          <li>Take a screenshot and save it to ~/screen.png</li>
+          <li>Show my 5 biggest processes by memory</li>
+          <li>Find every .log file in ~/Downloads larger than 10 MB</li>
+          <li>Search the web for "latest mistral models" and summarize</li>
+          <li>Open my default browser at github.com</li>
+          <li>Write a Python script that lists every TODO in a folder</li>
+        </ul>
+      </section>
+
+      <footer class="status" id="status">
+        <span class="dot pulse"></span>
+        <span class="status-text">connecting…</span>
+      </footer>
+    </aside>
+
+    <main class="chat">
+      <header class="chat-header">
+        <h1>
+          your laptop, <em>conducted</em>.
+        </h1>
+        <p class="subtitle">
+          A Mistral-powered agent that reads, writes, runs and remembers — locally.
+        </p>
+      </header>
+
+      <section id="thread" class="thread" aria-live="polite"></section>
+
+      <form id="composer" class="composer" autocomplete="off">
+        <textarea
+          id="input"
+          placeholder="Tell me what to do on your laptop…"
+          rows="2"
+          autofocus
+        ></textarea>
+        <div class="composer-bar">
+          <span class="kbd">⌘ + Enter</span>
+          <button type="submit" id="sendBtn">
+            <span>Send</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 12l18-9-7 18-2-7-9-2z" fill="currentColor" />
+            </svg>
+          </button>
+        </div>
+      </form>
+    </main>
+
+    <script src="/static/app.js" type="module"></script>
+  </body>
+</html>

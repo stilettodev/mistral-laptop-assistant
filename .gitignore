@@ -1,0 +1,27 @@
+# env / secrets
+.env
+.env.local
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.uv/
+.python-version
+
+# build / dist
+build/
+dist/
+
+# editors
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# logs / runtime
+*.log
+.mistral_assistant_audit.log
+.mistral_assistant_history.json
