@@ -135,13 +135,30 @@ def _serialize_messages(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 _FINISH_GUIDANCE = (
-    " A web_search was just executed. The tool result is in your context above — "
-    "it contains a 'results' array with fields: 'title', 'url', 'snippet'. "
-    "Output every result as one markdown list item:\n"
-    "- <title>: <url>\n\n"
-    "Extract 'title' and 'url' from each result. Write ONLY the list. "
-    "No intro, no summary, no apology, no analysis. Start with '-' on the first line."
+    " The tool result above contains data. Output ONLY the data in this format:\n"
+    "For web_search results: list each as '- <title>: <url>'\n"
+    "For command output: paste the raw output lines (no formatting)\n"
+    "For other tools: state the key fields and values.\n\n"
+    "Write ONLY the output. No intro, no summary, no apology, no analysis."
 )
+
+
+_TOOL_GUIDANCE: dict[str, str] = {
+    "web_search": (
+        " Output every web search result as one markdown list item:\n"
+        "- <title>: <url>\n"
+        "Extract title and url from the tool result. Write ONLY the list. "
+        "No intro, no apology, no analysis. Start with '-'."
+    ),
+    "run_shell": (
+        " Paste the raw command output exactly as it appears. "
+        "No formatting, no summary, no apology. Write ONLY the output lines."
+    ),
+    "system_info": (
+        " State the key system values. "
+        "Format as: 'key: value' per line. No intro, no apology."
+    ),
+}
 
 
 async def _synthesise_and_stream(
@@ -150,6 +167,7 @@ async def _synthesise_and_stream(
     history: list[dict[str, Any]],
     mc: Any,
     persona: str,
+    tool_name: str | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str]:
     """After tool batch: add guidance message, stream the model's final answer.
 
@@ -160,7 +178,8 @@ async def _synthesise_and_stream(
     This does NOT charge a step.
     """
     events: list[dict[str, Any]] = []
-    history.append({"role": "user", "content": _FINISH_GUIDANCE})
+    guidance = (_TOOL_GUIDANCE.get(tool_name, "") or _FINISH_GUIDANCE) if tool_name else _FINISH_GUIDANCE
+    history.append({"role": "user", "content": guidance})
     try:
         stream = mc.client().chat.complete(
             model=model,
@@ -490,8 +509,9 @@ async def run_agent(
             # After batch execution, make the synthesis call so the user sees
             # the model's final answer. This does NOT charge a step.
             if not needs_confirm:
+                last_tool = approved[-1]["name"] if approved else None
                 syn_events, new_tc, _ = await _synthesise_and_stream(
-                    model, tools_schema, history, mc, persona
+                    model, tools_schema, history, mc, persona, tool_name=last_tool
                 )
                 for ev in syn_events:
                     yield ev
