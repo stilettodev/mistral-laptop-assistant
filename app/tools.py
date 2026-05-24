@@ -542,6 +542,169 @@ def count_tokens(text: str) -> dict[str, Any]:
         return _result(False, error=str(exc))
 
 
+def hash_file(path: str, algorithm: str = "sha256") -> dict[str, Any]:
+    """Compute a cryptographic hash of a file."""
+    import hashlib
+
+    try:
+        p = _resolve_path(path)
+        h = hashlib.new(algorithm)
+        with open(p, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+        return _result(True, path=str(p), algorithm=algorithm, hash=h.hexdigest())
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def compare_files(path1: str, path2: str) -> dict[str, Any]:
+    """Compare two files byte-for-byte or line-by-line."""
+    try:
+        p1 = _resolve_path(path1)
+        p2 = _resolve_path(path2)
+        s1, s2 = p1.stat().st_size, p2.stat().st_size
+        if s1 != s2:
+            return _result(True, identical=False, reason="different sizes", size1=s1, size2=s2)
+        # quick byte compare
+        with open(p1, "rb") as a, open(p2, "rb") as b:
+            chunk = 65536
+            same = True
+            while True:
+                da, db = a.read(chunk), b.read(chunk)
+                if da != db:
+                    same = False
+                    break
+                if not da:
+                    break
+        return _result(True, identical=same, size_bytes=s1)
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def make_directory(path: str) -> dict[str, Any]:
+    """Create a directory and any missing parents."""
+    try:
+        p = _resolve_path(path)
+        p.mkdir(parents=True, exist_ok=True)
+        return _result(True, path=str(p))
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def copy_file(src: str, dst: str) -> dict[str, Any]:
+    """Copy a file to a destination (file or directory)."""
+    try:
+        s = _resolve_path(src)
+        d = _resolve_path(dst)
+        if d.is_dir():
+            d = d / s.name
+        shutil.copy2(s, d)
+        return _result(True, src=str(s), dst=str(d), size_bytes=d.stat().st_size)
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# System monitoring
+# ---------------------------------------------------------------------------
+
+
+def get_cpu_usage() -> dict[str, Any]:
+    """Return per-CPU and overall CPU utilisation (percent)."""
+    try:
+        per_cpu = psutil.cpu_percent(interval=0.5, percpu=True)
+        return _result(
+            True,
+            overall=round(sum(per_cpu) / len(per_cpu), 1),
+            per_cpu=[round(c, 1) for c in per_cpu],
+            count=psutil.cpu_count(logical=False),
+            logical_count=psutil.cpu_count(logical=True),
+        )
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def get_memory_usage() -> dict[str, Any]:
+    """Return RAM utilisation (total / free / used / percent)."""
+    try:
+        vm = psutil.virtual_memory()
+        return _result(
+            True,
+            total_gb=round(vm.total / (1024**3), 2),
+            available_gb=round(vm.available / (1024**3), 2),
+            used_gb=round(vm.used / (1024**3), 2),
+            percent=round(vm.percent, 1),
+        )
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def get_disk_usage(path: str = "") -> dict[str, Any]:
+    """Return disk space for a path (defaults to filesystem root)."""
+    try:
+        target = _resolve_path(path) if path else Path("/")
+        du = psutil.disk_usage(str(target))
+        return _result(
+            True,
+            path=str(target),
+            total_gb=round(du.total / (1024**3), 2),
+            used_gb=round(du.used / (1024**3), 2),
+            free_gb=round(du.free / (1024**3), 2),
+            percent=round(du.percent, 1),
+        )
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def get_network_interfaces() -> dict[str, Any]:
+    """List all network interfaces and their IPv4/IPv6 addresses."""
+    try:
+        interfaces = {}
+        for name, addrs in psutil.net_if_addrs().items():
+            infos = []
+            for addr in addrs:
+                infos.append({"family": str(addr.family).split(".")[-1],
+                              "address": addr.address,
+                              "netmask": addr.netmask})
+            interfaces[name] = infos
+        return _result(True, interfaces=interfaces, count=len(interfaces))
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def get_battery_status() -> dict[str, Any]:
+    """Return battery charge percentage and power plugged-in state."""
+    try:
+        b = psutil.sensors_battery()
+        if b is None:
+            return _result(False, error="No battery detected on this machine")
+        return _result(
+            True,
+            percent=round(b.percent, 1),
+            plugged_in=b.power_plugged,
+            time_left=int(b.secsleft) if b.secsleft >= 0 else -1,
+        )
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def get_boot_time() -> dict[str, Any]:
+    """Return system boot timestamp and uptime string."""
+    try:
+        boot = psutil.boot_time()
+        uptime_s = time.time() - boot
+        h, rem = divmod(int(uptime_s), 3600)
+        m, s = divmod(rem, 60)
+        return _result(
+            True,
+            boot_timestamp=int(boot),
+            uptime_formatted=f"{h}h {m}m {s}s",
+            uptime_seconds=int(uptime_s),
+        )
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
 # ---------------------------------------------------------------------------
 # Bookmarks
 # ---------------------------------------------------------------------------
@@ -887,6 +1050,17 @@ TOOLS: dict[str, Any] = {
         find_files,
         file_size,
         count_tokens,
+        hash_file,
+        compare_files,
+        make_directory,
+        copy_file,
+        # System monitoring
+        get_cpu_usage,
+        get_memory_usage,
+        get_disk_usage,
+        get_network_interfaces,
+        get_battery_status,
+        get_boot_time,
         # Bookmarks
         save_bookmark,
         list_bookmarks,

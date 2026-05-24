@@ -394,8 +394,8 @@ def test_new_tools_registered() -> None:
 
 
 def test_total_tool_count() -> None:
-    # 21 originals + 7 new + 4 skills + 11 features = 43
-    assert len(tools.TOOLS) == 43
+    # 21 originals + 7 new + 4 skills + 21 features = 53
+    assert len(tools.TOOLS) == 53
 
 
 # ── API routes (FastAPI TestClient) ──────────────────────────────────
