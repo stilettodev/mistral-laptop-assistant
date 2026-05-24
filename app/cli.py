@@ -187,6 +187,14 @@ def cmd_memory(_: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="mla", description="Mistral Laptop Assistant")
+
+    # Top-level flags so `mla --open` works without subcommand
+    parser.add_argument("--open", action="store_true", help="open the browser (with serve)")
+    parser.add_argument("-k", "--key", dest="api_key", default="",
+                        help="Mistral API key")
+    parser.add_argument("--host", default=None)
+    parser.add_argument("--port", type=int, default=None)
+
     sub = parser.add_subparsers(dest="cmd")
 
     serve = sub.add_parser("serve", help="run the web UI + API (default)")
@@ -198,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--reload", action="store_true", help="auto-reload on code changes")
     serve.add_argument("--quiet", action="store_true", help="reduce uvicorn log noise")
     serve.add_argument("-k", "--key", dest="api_key", default="",
-                      help="Mistral API key (or set MLA_MISTRAL_API_KEY env var / .env)")
+                        help="Mistral API key")
     serve.set_defaults(func=cmd_serve)
 
     audit = sub.add_parser("audit", help="show the tool-call audit log")
@@ -212,8 +220,27 @@ def main(argv: list[str] | None = None) -> int:
     memory.set_defaults(func=cmd_memory)
 
     args = parser.parse_args(argv)
+
+    # When no subcommand given, default to `serve` and forward top-level flags
     if not args.cmd:
-        return cmd_serve(parser.parse_args(["serve"]))
+        defaults = parser.parse_args(["serve"])
+        if args.open:
+            defaults.open = True
+        if args.api_key:
+            defaults.api_key = args.api_key
+        if args.host is not None:
+            defaults.host = args.host
+        if args.port is not None:
+            defaults.port = args.port
+        return cmd_serve(defaults)
+
+    # Propagate top-level --open / --key into serve args
+    if args.cmd == "serve":
+        if args.open:
+            args.open = True
+        if args.api_key:
+            pass  # already on serve
+
     return args.func(args)
 
 
