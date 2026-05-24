@@ -566,6 +566,29 @@ body {
 }
 .chip-label { color: var(--accent); }
 
+/* Header control buttons */
+.hdr-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-mute);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.hdr-btn:hover { border-color: var(--accent); color: var(--text-dim); }
+.hdr-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+.stop-btn { color: var(--danger); border-color: transparent; }
+.stop-btn:hover { border-color: var(--danger); color: var(--danger); }
+.stop-btn.active { background: rgba(255, 80, 80, 0.12); border-color: var(--danger); color: var(--danger); }
+
 .system-info {
   font-family: var(--mono);
   font-size: 11px;

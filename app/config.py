@@ -67,7 +67,14 @@ class Settings(BaseSettings):
     )
 
     # Behaviour
-    max_agent_steps: int = Field(default=20)
+    max_agent_steps: int = Field(
+        default=30,
+        description=(
+            "Maximum number of agent steps per request. "
+            "Each step is one model call (tool_calls or final). "
+            "Override with MLA_MAX_AGENT_STEPS env var."
+        ),
+    )
     shell_timeout_seconds: int = Field(default=120)
     history_path: Path = Field(
         default_factory=lambda: Path.home() / ".mistral_assistant_history.json"

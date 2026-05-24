@@ -21,19 +21,24 @@ const attachStrip  = $("attachStrip");
 const speakToggle  = $("speakToggle");
 const modelChip    = $("modelChip");
 const systemInfo   = $("systemInfo");
+const thinkingToggle = $("thinkingToggle");
+const thinkingLabel  = $("thinkingLabel");
+const stopBtn        = $("stopBtn");
 
 const state = {
   conversationId: crypto.randomUUID(),
   safety: "normal",
-  persona: "jarvis",  // "jarvis" or "veronica" 
+  persona: "jarvis",  // "jarvis" or "veronica"
   pendingConfirmations: null,
   busy: false,
+  abortController: null,  // for cancelling in-flight SSE
   modelsById: {},
   capabilities: { voice: { stt: false, tts: false } },
   attachments: [],          // {name, data_url}
   recorder: null,
   recording: false,
   audioPlayer: null,
+  thinkingVisible: true,    // show status events in #thinkingBar
 };
 
 // ── Boot ─────────────────────────────────────────────────────────────
@@ -66,6 +71,11 @@ async function loadStatus() {
 function setStatus(kind, label) {
   if (statusDot) statusDot.className = "status-dot pulse-soft " + kind;
   if (statusText) statusText.textContent = label;
+}
+
+function autoGrow(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 240) + "px";
 }
 
 async function loadCapabilities() {
@@ -114,7 +124,21 @@ function bindUI() {
       e.preventDefault();
       submit();
     }
+    // Enter without modifier inserts newline — do NOT submit the form.
+    if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
+      e.preventDefault();
+      // Insert newline at cursor, grow textarea if needed.
+      const start = input.selectionStart;
+      const end = input.selectionEnd;
+      const before = input.value.substring(0, start);
+      const after = input.value.substring(end);
+      input.value = before + "\n" + after;
+      input.selectionStart = input.selectionEnd = start + 1;
+      autoGrow(input);
+    }
   });
+
+  input.addEventListener("input", () => autoGrow(input));
 
   newChatBtn.addEventListener("click", async () => {
     await fetch(`/api/conversations/${state.conversationId}/reset`, { method: "POST" });
@@ -125,6 +149,23 @@ function bindUI() {
     thread.innerHTML = "";
     input.focus();
     refreshHistory();
+  });
+
+  // Thinking visibility toggle
+  thinkingToggle.addEventListener("click", () => {
+    state.thinkingVisible = !state.thinkingVisible;
+    thinkingToggle.classList.toggle("active", state.thinkingVisible);
+    thinkingLabel.textContent = state.thinkingVisible ? "Thinking" : "Silent";
+    if (state.thinkingVisible) {
+      $("thinkingBar").textContent = "";
+    }
+  });
+
+  // Stop button — aborts the in-flight SSE request
+  stopBtn.addEventListener("click", () => {
+    if (state.abortController) {
+      state.abortController.abort();
+    }
   });
 
   // Quick-action cards in the sidebar
@@ -674,6 +715,9 @@ async function submit() {
 async function runRequest(payload, extraConfirmations = {}) {
   state.busy = true;
   sendBtn.disabled = true;
+  state.abortController = new AbortController();
+  stopBtn.classList.remove("hidden");
+  stopBtn.classList.add("active");
   payload.confirmations = { ...payload.confirmations, ...extraConfirmations };
 
   const placeholder = addAssistantMessage("");
@@ -688,9 +732,12 @@ async function runRequest(payload, extraConfirmations = {}) {
         "x-conversation-id": state.conversationId,
       },
       body: JSON.stringify(payload),
+      signal: state.abortController.signal,
     });
   } catch (e) {
     showError(`Network error: ${e.message}`);
+    stopBtn.classList.add("hidden");
+    stopBtn.classList.remove("active");
     cleanup();
     return;
   }
@@ -700,6 +747,8 @@ async function runRequest(payload, extraConfirmations = {}) {
     try { err = JSON.parse(err).detail || err; } catch {}
     showError(err);
     placeholder.remove();
+    stopBtn.classList.add("hidden");
+    stopBtn.classList.remove("active");
     cleanup();
     return;
   }
@@ -736,6 +785,9 @@ async function runRequest(payload, extraConfirmations = {}) {
         }
 
         case "status":
+          if (state.thinkingVisible) {
+            $("thinkingBar").textContent = evt.data;
+          }
           if (currentAssistant) {
             currentAssistant.querySelector(".body").innerHTML =
               `<span class="typing">${escapeHtml(evt.data)}</span>`;
@@ -751,6 +803,9 @@ async function runRequest(payload, extraConfirmations = {}) {
           break;
 
         case "tool_call":
+          if (state.thinkingVisible) {
+            $("thinkingBar").textContent = `⚙ ${evt.data.name}(${JSON.stringify(evt.data.arguments)})`;
+          }
           if (!placeholderUsed && currentAssistant) {
             currentAssistant.remove();
             currentAssistant = null;
@@ -759,6 +814,9 @@ async function runRequest(payload, extraConfirmations = {}) {
           break;
 
         case "tool_result":
+          if (state.thinkingVisible) {
+            $("thinkingBar").textContent = "processing…";
+          }
           updateToolResult(evt.data);
           if (!currentAssistant) {
             currentAssistant = addAssistantMessage("");
@@ -791,6 +849,9 @@ async function runRequest(payload, extraConfirmations = {}) {
           break;
 
         case "done":
+          if (state.thinkingVisible) {
+            $("thinkingBar").textContent = "";
+          }
           break;
       }
       scrollDown();
@@ -809,6 +870,12 @@ async function runRequest(payload, extraConfirmations = {}) {
 function cleanup() {
   state.busy = false;
   sendBtn.disabled = false;
+  state.abortController = null;
+  stopBtn.classList.add("hidden");
+  stopBtn.classList.remove("active");
+  if (state.thinkingVisible) {
+    $("thinkingBar").textContent = "";
+  }
   input.focus();
 }
 

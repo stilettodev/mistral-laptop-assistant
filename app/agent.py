@@ -126,52 +126,58 @@ _FINISH_GUIDANCE = (
 )
 
 
-def _synthesise_results(
+async def _synthesise_and_stream(
     model: str,
     tools_schema: list[dict[str, Any]],
     history: list[dict[str, Any]],
     mc: Any,
-) -> tuple[str | None, list[dict[str, Any]]]:
-    """Append a guidance message and call chat.complete once for the final answer.
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """After tool batch: add guidance message, stream the model's final answer.
 
-    Returns (final_text, new_tool_calls). The caller yields the text and
-    handles any remaining tool calls in the next loop iteration.
-    This does NOT count as a new step.
+    Returns (events, tool_calls). Events include 'message' delta chunks and
+    a 'final' marker if the model produced no more tool calls.
+    tool_calls is non-empty if the model still wants to call tools (the
+    caller should set pending and continue the loop).
+    This does NOT charge a step.
     """
-    history.append(
-        {"role": "user", "content": _FINISH_GUIDANCE}
-    )
+    events: list[dict[str, Any]] = []
+    history.append({"role": "user", "content": _FINISH_GUIDANCE})
     try:
-        response = mc.client().chat.complete(
+        stream = mc.client().chat.complete(
             model=model,
             messages=_serialize_messages(history),
             tools=tools_schema,
             tool_choice="auto",
             temperature=0.2,
+            stream=True,
         )
     except Exception as exc:
         log.warning("synthesis call failed: %s", exc)
         history.pop()
-        return None, []
+        return [], []
 
-    history.pop()
+    history.pop()  # remove guidance — only keep real model output
 
-    choice = response.choices[0].message
-    final_text = choice.content or ""
-    raw_tc = getattr(choice, "tool_calls", None) or []
-    tool_calls_out = [
-        {"id": tc.id, "name": tc.function.name, "arguments": json.loads(tc.function.arguments)}
-        for tc in raw_tc
-    ]
+    buffer = ""
+    raw_tc: list[Any] = []
+    for event in stream:
+        delta = getattr(event.choices[0].delta, "content", "") or ""
+        if delta:
+            buffer += delta
+            events.append({"type": "message", "data": delta})
+        raw_tc = getattr(event.choices[0].delta, "tool_calls", None) or raw_tc
 
-    if not tool_calls_out:
-        history.append({"role": "assistant", "content": final_text})
-        return final_text, []
-
-    # Model still wants tools — leave history as-is (the pending branch will
-    # re-add the assistant message naturally) and return the calls so the
-    # caller can set pending.
-    return "", tool_calls_out
+    if raw_tc:
+        tool_calls_out = [
+            {"id": tc.id, "name": tc.function.name, "arguments": json.loads(tc.function.arguments)}
+            for tc in raw_tc
+        ]
+        history.append({"role": "assistant", "content": buffer, "tool_calls": tool_calls_out})
+        return events, tool_calls_out
+    else:
+        history.append({"role": "assistant", "content": buffer})
+        events.append({"type": "final", "data": buffer})
+        return events, []
 
 
 # ---------------------------------------------------------------------------
@@ -439,21 +445,20 @@ async def run_agent(
                     "data": {"id": tc["id"], "name": tc["name"], "result": result},
                 }
 
-            # After batch execution, synthesise all results for the model in one
-            # go so it can form a final answer rather than issuing more tool calls.
-            # This does NOT charge a step.
+            # After batch execution, make the synthesis call so the user sees
+            # the model's final answer. This does NOT charge a step.
             if not needs_confirm:
-                final_text, new_tc = _synthesise_results(model, tools_schema, history, mc)
-                if final_text:
-                    yield {"type": "final", "data": final_text}
-                    audit("chat_end", {"cid": conversation_id, "steps": step})
-                    CONVERSATIONS.persist(conversation_id)
-                    return
+                syn_events, new_tc = await _synthesise_and_stream(
+                    model, tools_schema, history, mc
+                )
+                for ev in syn_events:
+                    yield ev
                 if new_tc:
-                    # Model still wants tools — they'll be handled on the next loop
-                    # iteration (which charges a step since pending=[] there).
                     pending = new_tc
                     continue
+                audit("chat_end", {"cid": conversation_id, "steps": step})
+                CONVERSATIONS.persist(conversation_id)
+                return
 
     yield {
         "type": "error",
