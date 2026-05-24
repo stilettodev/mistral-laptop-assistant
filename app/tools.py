@@ -31,6 +31,7 @@ from typing import Any
 import psutil
 
 from .config import settings
+from .skills import install_skill, list_available_skills, list_skills, uninstall_skill
 
 
 def _result(ok: bool, **payload: Any) -> dict[str, Any]:
@@ -675,6 +676,11 @@ TOOLS: dict[str, Any] = {
         remember,
         recall,
         forget,
+        # Skills management
+        list_skills,
+        list_available_skills,
+        install_skill,
+        uninstall_skill,
     ]
 }
 

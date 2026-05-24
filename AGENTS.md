@@ -47,6 +47,22 @@ tests/
 - Agent state is a singleton `CONVERSATIONS` dict keyed by
   `x-conversation-id` header.
 
+## Skills (`.agents/skills/`)
+Skills are Markdown files that extend the agent's capabilities. They can be
+installed from any public GitHub URL pointing to a `SKILL.md` file.
+
+**Available tools:**
+- `list_skills` — list all installed skills (name, description, source URL)
+- `list_available_skills(query)` — search GitHub for public skills by keyword
+- `install_skill(url)` — install a skill from a GitHub URL (tree, blob, or raw)
+- `uninstall_skill(name)` — remove a previously installed skill
+
+Skills are stored under `.agents/skills/` with a `.index.json` manifest.
+Example install:
+```
+install_skill(url="https://github.com/OpenHands/extensions/tree/main/skills/codereview")
+```
+
 ## Running locally
 ```bash
 cp .env.example .env       # then add MLA_MISTRAL_API_KEY
