@@ -17,7 +17,7 @@ echo ▸ Checking for uv...
 where uv >nul 2>&1
 if %ERRORLEVEL% neq 0 (
     echo   Installing uv...
-    powershell -NoProfile -Command "irm https://astral.sh/uv/install.ps1 ^| iex"
+    powershell -NoProfile -Command "irm https://astral.sh/uv/install.ps1 | iex"
     :: Refresh PATH for this session
     for /f "tokens=2*" %%a in ('reg query HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment /v Path 2^>nul') do set "MachinePath=%%b"
     for /f "tokens=2*" %%a in ('reg query HKCU\Environment /v Path 2^>nul') do set "UserPath=%%b"
