@@ -179,7 +179,7 @@ def run_shell(command: str, working_dir: str = "", timeout: int = 0) -> dict[str
         timeout: Seconds before the command is killed. 0 = use default.
     """
     cwd = _resolve_path(working_dir) if working_dir else settings.workspace_dir
-    timeout = timeout or settings.shell_timeout_seconds
+    timeout = int(timeout) or settings.shell_timeout_seconds
     try:
         proc = subprocess.run(
             command,
@@ -220,6 +220,7 @@ def list_processes(filter: str = "", limit: int = 25) -> dict[str, Any]:
     """
     procs: list[dict[str, Any]] = []
     needle = filter.lower()
+    limit = int(limit)
     for p in psutil.process_iter(["pid", "name", "username", "memory_info"]):
         try:
             info = p.info
@@ -421,6 +422,7 @@ def read_url(url: str, max_bytes: int = 50_000) -> dict[str, Any]:
     try:
         import httpx
 
+        max_bytes = int(max_bytes)
         with httpx.Client(timeout=10.0, follow_redirects=True) as client:
             resp = client.get(url)
         text = resp.text[:max_bytes]
@@ -456,8 +458,7 @@ def ping_host(hostname: str, count: int = 4) -> dict[str, Any]:
     Works cross-platform using system ping command.
     """
     try:
-        import shlex
-
+        count = int(count)  # ensure int even if LLM sends string
         args = ["-c", str(count)] if sys.platform != "win32" else ["-n", str(count)]
         cmd = ["ping"] + args + [hostname]
         proc = subprocess.run(
@@ -470,7 +471,7 @@ def ping_host(hostname: str, count: int = 4) -> dict[str, Any]:
             output=_truncate(proc.stdout + proc.stderr, 2000),
         )
     except subprocess.TimeoutExpired:
-        return _result(False, error=f"ping timed out after {count * 5}s")
+        return _result(False, error=f"ping timed out after {int(count) * 5}s")
     except Exception as exc:
         return _result(False, error=str(exc))
 
@@ -493,6 +494,7 @@ def find_files(directory: str, pattern: str = "*", max_results: int = 20) -> dic
     """Recursively search for files matching ``pattern`` (glob) under ``directory``."""
     try:
         root = _resolve_path(directory)
+        max_results = int(max_results)
         matches = list(root.rglob(pattern))
         dirs, files = [], []
         for p in matches:
@@ -642,6 +644,8 @@ def extract_lines(path: str, start: int = 1, end: int = -1) -> dict[str, Any]:
     """Extract a range of lines from a text file (1-indexed, inclusive)."""
     try:
         p = _resolve_path(path)
+        start = int(start)
+        end = int(end)
         lines = p.read_text().splitlines()
         s = max(1, min(start, len(lines)))
         e = len(lines) if end == -1 else max(s, min(end, len(lines)))
