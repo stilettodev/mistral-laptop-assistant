@@ -82,11 +82,23 @@ cd ~/mistral-laptop-assistant && uv run mla --open
 
 ### Windows
 
-```powershell
-# One-line install + launch (from an existing clone)
-irm https://raw.githubusercontent.com/stilettodev/mistral-laptop-assistant/main/install.ps1 | iex
+From **Command Prompt** or **PowerShell** (inside the cloned folder):
 
-# Or manually
+```cmd
+:: One-line install + launch
+install.cmd YOUR_API_KEY
+
+:: Or just run and it'll prompt for the key
+install.cmd
+```
+
+Or without the script:
+
+```cmd
+:: Install uv first (as Admin)
+powershell -Command "irm https://astral.sh/uv/install.ps1 | iex"
+
+:: Then
 uv sync
 uv run mla -k YOUR_KEY --open
 ```
