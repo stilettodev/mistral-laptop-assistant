@@ -418,17 +418,26 @@ def web_search(query: str, max_results: int = 5) -> dict[str, Any]:
     try:
         from ddgs import DDGS
 
+        max_results = int(max_results)
+        started = time.time()
         with DDGS() as ddg:
             raw = list(ddg.text(query, max_results=max_results))
+        elapsed_ms = int((time.time() - started) * 1000)
         results = [
             {
                 "title": r.get("title", ""),
                 "url": r.get("href") or r.get("url", ""),
-                "snippet": r.get("body", ""),
+                "snippet": _truncate(r.get("body", ""), 300),
             }
             for r in raw
         ]
-        return _result(True, query=query, count=len(results), results=results)
+        return _result(
+            True,
+            query=query,
+            count=len(results),
+            results=results,
+            duration_ms=elapsed_ms,
+        )
     except Exception as exc:
         return _result(False, error=f"search failed: {exc}")
 

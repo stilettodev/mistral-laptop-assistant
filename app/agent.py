@@ -121,12 +121,17 @@ def _serialize_messages(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
 # Guidance appended after tool-result batches so the model gives a complete answer.
 # Must be strong enough to override the model's "just intro" tendency.
 _FINISH_GUIDANCE = (
-    " The above are the actual tool results. Your job now is to deliver the "
-    "complete, useful answer to the user. Do NOT say 'Veronica here' or similar "
-    "intro phrases followed by nothing. Do NOT dismiss, apologize for, or ignore "
-    "tool results. Include the actual data/values verbatim in your answer. "
-    "Give the full answer — facts, sources, key points, relevant details — "
-    "right now. Do NOT call more tools."
+    " The above are the actual tool results. Your job is to give the user "
+    "the complete, useful answer RIGHT NOW. Do NOT say 'Veronica here' or similar "
+    "intro phrases. Do NOT dismiss or ignore tool results. Do NOT apologize. "
+    "Do NOT say 'the information is above' or 'as shown above' or 'based on the "
+    "results'. Instead, embed the actual data directly in your answer: "
+    "list each source title, include the URL, quote the key snippets. "
+    "For web search: list every result as '• [Title](URL): snippet text'. "
+    "For data/time: say 'The current time is [time]'. "
+    "For commands: paste the actual output lines. "
+    "Give facts, figures, and key points — not descriptions of facts. "
+    "Do NOT call more tools. Do NOT ask if the user wants more."
 )
 
 
