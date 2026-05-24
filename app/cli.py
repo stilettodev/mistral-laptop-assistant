@@ -23,6 +23,12 @@ import time
 import webbrowser
 from pathlib import Path
 
+if (sys.version_info.major, sys.version_info.minor) >= (3, 14):
+    sys.exit(
+        "Error: MLA requires Python 3.11–3.13 (Python 3.14 is not yet supported by uvicorn).\n"
+        "Download 3.13: https://www.python.org/downloads/release/python-3135/"
+    )
+
 import uvicorn
 
 from .config import settings
