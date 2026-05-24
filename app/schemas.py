@@ -33,6 +33,15 @@ class ChatRequest(BaseModel):
         description="Map of tool-call-id to user approval decision.",
     )
     reset: bool = Field(default=False, description="Clear conversation history first.")
+    images: list[str] = Field(
+        default_factory=list,
+        description="Optional data: URLs or http(s) URLs of images attached to this turn.",
+    )
+    speak: bool = Field(default=False, description="Synthesize the final answer.")
+
+
+class SpeakRequest(BaseModel):
+    text: str = Field(..., min_length=1)
 
 
 class ModelInfo(BaseModel):

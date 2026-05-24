@@ -16,6 +16,14 @@ dependencies = [
     "pyperclip>=1.9.0",
     "rich>=13.9.0",
     "ddgs>=9.0.0",
+    "python-multipart>=0.0.29",
+]
+
+[project.optional-dependencies]
+desktop = [
+    "pystray>=0.19.5",
+    "pillow>=11.0.0",
+    "pywebview>=5.5",
 ]
 
 [project.scripts]

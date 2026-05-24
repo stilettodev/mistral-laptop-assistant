@@ -16,7 +16,9 @@ import time
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from . import storage
 from .config import settings
+from .memory import context_block
 from .mistral_client import build_tool_schemas, get_client
 from .router import route
 from .safety import audit, evaluate
@@ -56,12 +58,16 @@ log of every tool call is written to {audit}."""
 def _build_system_prompt() -> str:
     import os
 
-    return SYSTEM_PROMPT.format(
+    base = SYSTEM_PROMPT.format(
         system=platform.platform(),
         user=os.environ.get("USER") or os.environ.get("USERNAME") or "you",
         home=str(settings.workspace_dir),
         audit=str(settings.audit_log),
     )
+    mem = context_block()
+    if mem:
+        base += "\n\n" + mem
+    return base
 
 
 def _serialize_messages(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -95,6 +101,14 @@ def _serialize_messages(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     ],
                 }
             )
+        elif msg["role"] == "user" and msg.get("images"):
+            # Multimodal user message: list of content parts.
+            parts: list[dict[str, Any]] = [
+                {"type": "text", "text": msg.get("content") or ""}
+            ]
+            for img_url in msg["images"]:
+                parts.append({"type": "image_url", "image_url": img_url})
+            out.append({"role": "user", "content": parts})
         else:
             out.append({"role": msg["role"], "content": msg.get("content") or ""})
     return out
@@ -110,6 +124,7 @@ class Conversation:
 
     A simple dict keyed by ``conversation_id`` keeps things stateless
     from the frontend's perspective: send the same id to continue.
+    Conversations are also persisted to disk so they survive restarts.
     """
 
     def __init__(self) -> None:
@@ -117,11 +132,16 @@ class Conversation:
         self._pending_calls: dict[str, list[dict[str, Any]]] = {}
 
     def get(self, cid: str) -> list[dict[str, Any]]:
-        return self._store.setdefault(cid, [])
+        if cid not in self._store:
+            # Try loading from disk first.
+            persisted = storage.load(cid)
+            self._store[cid] = persisted if persisted is not None else []
+        return self._store[cid]
 
     def reset(self, cid: str) -> None:
         self._store.pop(cid, None)
         self._pending_calls.pop(cid, None)
+        storage.delete(cid)
 
     def pending(self, cid: str) -> list[dict[str, Any]]:
         return self._pending_calls.get(cid, [])
@@ -131,6 +151,10 @@ class Conversation:
             self._pending_calls[cid] = calls
         else:
             self._pending_calls.pop(cid, None)
+
+    def persist(self, cid: str) -> None:
+        if cid in self._store:
+            storage.save(cid, self._store[cid])
 
 
 CONVERSATIONS = Conversation()
@@ -171,7 +195,10 @@ async def run_agent(
         # the pending tool calls now that we have confirmations.
         yield {"type": "status", "data": "Resuming after confirmation…"}
     else:
-        history.append({"role": "user", "content": request.message})
+        user_msg: dict[str, Any] = {"role": "user", "content": request.message}
+        if request.images:
+            user_msg["images"] = request.images
+        history.append(user_msg)
         model, reason, via = _select_model(request)
         yield {
             "type": "model",
@@ -241,6 +268,7 @@ async def run_agent(
             if not tool_calls:
                 yield {"type": "final", "data": assistant_text}
                 audit("chat_end", {"cid": conversation_id, "steps": step})
+                CONVERSATIONS.persist(conversation_id)
                 return
 
         # Evaluate safety for every requested call.
@@ -297,6 +325,7 @@ async def run_agent(
                 "confirmation_needed",
                 {"cid": conversation_id, "calls": [c["name"] for c in needs_confirm]},
             )
+            CONVERSATIONS.persist(conversation_id)
             return
 
         # Execute approved tool calls in order.
@@ -343,3 +372,22 @@ async def run_agent(
         "type": "error",
         "data": f"Hit max_agent_steps={settings.max_agent_steps} without finishing.",
     }
+    CONVERSATIONS.persist(conversation_id)
+
+
+async def chat_oneshot(prompt: str) -> str:
+    """Run the assistant for a single prompt and return the final text.
+
+    Used by the scheduler for ``chat`` jobs. Always runs in ``yolo``
+    safety mode so background jobs don't block on confirmations.
+    """
+    import uuid as _uuid
+
+    cid = "scheduler-" + _uuid.uuid4().hex[:8]
+    request = ChatRequest(message=prompt, model="auto", safety_mode="yolo")
+    parts: list[str] = []
+    async for event in run_agent(cid, request):
+        if event["type"] in {"message", "final"} and event["data"]:
+            parts.append(str(event["data"]))
+    CONVERSATIONS.reset(cid)  # don't pollute disk with scheduler runs
+    return parts[-1] if parts else ""

@@ -37,6 +37,8 @@ READONLY_TOOLS = {
     "which",
     "get_env",
     "get_datetime",
+    "recall",
+    "list_recurring",
 }
 
 # Patterns that always require user approval (case-insensitive).
@@ -64,6 +66,21 @@ class SafetyDecision:
     reason: str = ""
 
 
+def _split_csv(value: str) -> set[str]:
+    return {x.strip() for x in (value or "").split(",") if x.strip()}
+
+
+def tool_is_allowed_by_policy(name: str) -> tuple[bool, str]:
+    """Apply ``MLA_ALLOW_TOOLS`` / ``MLA_DENY_TOOLS`` to a tool name."""
+    deny = _split_csv(settings.deny_tools)
+    if name in deny:
+        return False, f"tool {name!r} is denied by MLA_DENY_TOOLS"
+    allow = _split_csv(settings.allow_tools)
+    if allow and name not in allow:
+        return False, f"tool {name!r} is not in MLA_ALLOW_TOOLS"
+    return True, ""
+
+
 def looks_dangerous(text: str) -> str | None:
     """Return matching dangerous pattern description, or None."""
     for pattern in DANGEROUS_PATTERNS:
@@ -84,6 +101,10 @@ def evaluate(
     Returns ``needs_confirmation=True`` when the UI must prompt the
     user. The agent loop pauses until a decision is returned.
     """
+    allowed_by_policy, why = tool_is_allowed_by_policy(tool_name)
+    if not allowed_by_policy:
+        return SafetyDecision(allowed=False, needs_confirmation=False, reason=why)
+
     if mode == "yolo":
         return SafetyDecision(allowed=True, needs_confirmation=False)
 
@@ -111,7 +132,12 @@ def evaluate(
         "open_url",
         "clipboard_set",
         "schedule_task",
+        "schedule_recurring",
+        "cancel_recurring",
+        "toggle_recurring",
         "notify",
+        "remember",
+        "forget",
     }
 
     must_confirm = mode == "strict" or write_like or bool(risky_reason)

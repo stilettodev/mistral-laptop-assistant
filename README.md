@@ -117,6 +117,8 @@ Then chat away at <http://127.0.0.1:8000>.
 | `--port 8080`    | Use a different port. |
 | `--open`         | Open the browser automatically. |
 | `--reload`       | Auto-reload on code changes (dev only). |
+| `--window`       | Open a real native OS window (pywebview, needs `--extra desktop`). |
+| `--tray`         | Start a system-tray icon (pystray, needs `--extra desktop`). |
 
 ---
 
@@ -186,11 +188,7 @@ That's it – it shows up to the model on next request.
 ## Tests
 
 ```bash
-uv run pytest -v
-```
-
-22 tests covering tools, safety policy, tool-schema generation and the
-heuristic router. They run completely offline (no API key required).
+uv run pytest tests/ -v       # 44 tests, no API key needed
 
 ---
 

@@ -6,13 +6,17 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app import safety, tools
 from app.config import settings
 from app.mistral_client import DEFAULT_MODELS, build_tool_schemas
 from app.router import heuristic_route
+
+ROOT = Path(__file__).resolve().parent.parent
 
 
 # ── tools ─────────────────────────────────────────────────────────────
@@ -189,3 +193,270 @@ def test_router_default_models_contains_auto() -> None:
     assert "auto" in ids
     assert "mistral-large-latest" in ids
     assert "codestral-latest" in ids
+
+
+# ── scheduler ────────────────────────────────────────────────────────
+
+
+def test_scheduler_parses_every_spec() -> None:
+    from datetime import datetime
+    from app.scheduler import _next_after
+
+    now = datetime(2025, 1, 1, 12, 0, 0)
+    assert (_next_after(now, "every 30s") - now).total_seconds() == 30
+    assert (_next_after(now, "every 5m") - now).total_seconds() == 300
+    assert (_next_after(now, "every 2h") - now).total_seconds() == 7200
+
+
+def test_scheduler_parses_daily_spec() -> None:
+    from datetime import datetime
+    from app.scheduler import _next_after
+
+    now = datetime(2025, 1, 1, 12, 0, 0)
+    nxt = _next_after(now, "daily 09:30")
+    assert nxt.day == 2 and nxt.hour == 9 and nxt.minute == 30
+    nxt = _next_after(now, "daily 14:00")
+    assert nxt.day == 1 and nxt.hour == 14
+
+
+def test_scheduler_parses_weekly_spec() -> None:
+    from datetime import datetime
+    from app.scheduler import _next_after
+
+    # Jan 1 2025 is a Wednesday (weekday=2)
+    now = datetime(2025, 1, 1, 12, 0, 0)
+    nxt = _next_after(now, "weekly mon 09:00")
+    assert nxt.weekday() == 0  # Monday
+
+
+def test_scheduler_parses_cron_spec() -> None:
+    from datetime import datetime
+    from app.scheduler import _next_after
+
+    now = datetime(2025, 1, 1, 12, 0, 0)
+    nxt = _next_after(now, "cron 0 9 * * *")
+    assert nxt.hour == 9 and nxt.minute == 0
+
+
+def test_scheduler_rejects_invalid_spec() -> None:
+    from datetime import datetime
+    from app.scheduler import _next_after
+
+    with pytest.raises(ValueError):
+        _next_after(datetime.now(), "tomorrow ish")
+
+
+def test_scheduler_crud(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "scheduler_file", tmp_path / "jobs.json")
+    from app.scheduler import Scheduler
+
+    s = Scheduler()
+    job = s.add(name="hi", when="every 1m", command="echo hi")
+    assert job["id"] in s.jobs
+    assert s.jobs[job["id"]]["enabled"] is True
+    assert (tmp_path / "jobs.json").exists()
+    assert s.toggle(job["id"], enabled=False)
+    assert s.jobs[job["id"]]["enabled"] is False
+    assert s.remove(job["id"])
+    assert job["id"] not in s.jobs
+    assert s.remove("nonexistent") is False
+
+
+def test_scheduler_rejects_invalid_job() -> None:
+    from app.scheduler import Scheduler
+
+    s = Scheduler()
+    with pytest.raises(ValueError):
+        s.add(name="x", when="every 1m", kind="invalid")
+    with pytest.raises(ValueError):
+        s.add(name="x", when="every 1m", kind="shell")  # missing command
+    with pytest.raises(ValueError):
+        s.add(name="x", when="every 1m", kind="chat")  # missing prompt
+
+
+# ── memory ───────────────────────────────────────────────────────────
+
+
+def test_memory_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "memory_file", tmp_path / "mem.json")
+    from app import memory
+
+    assert memory.recall("missing")["ok"] is False
+    assert memory.remember("home", "~/projects")["ok"]
+    assert memory.recall("home")["value"] == "~/projects"
+    all_facts = memory.recall()
+    assert all_facts["count"] == 1
+    assert memory.forget("home")["ok"]
+    assert memory.recall("home")["ok"] is False
+
+
+def test_memory_context_block(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "memory_file", tmp_path / "mem.json")
+    from app import memory
+
+    assert memory.context_block() == ""
+    memory.remember("favorite_editor", "vim")
+    block = memory.context_block()
+    assert "favorite_editor" in block
+    assert "vim" in block
+
+
+# ── conversation storage ─────────────────────────────────────────────
+
+
+def test_storage_save_load_delete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(settings, "conversations_dir", tmp_path / "chats")
+    from app import storage
+
+    msgs = [
+        {"role": "user", "content": "first question"},
+        {"role": "assistant", "content": "answer"},
+    ]
+    storage.save("cid1", msgs)
+    loaded = storage.load("cid1")
+    assert loaded == msgs
+
+    convs = storage.list_conversations()
+    assert convs[0]["id"] == "cid1"
+    assert convs[0]["title"].startswith("first question")
+    assert convs[0]["messages"] == 2
+
+    assert storage.delete("cid1") is True
+    assert storage.load("cid1") is None
+    assert storage.delete("cid1") is False
+
+
+# ── per-tool allow/deny policy ───────────────────────────────────────
+
+
+def test_allow_deny_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.safety import tool_is_allowed_by_policy
+
+    monkeypatch.setattr(settings, "deny_tools", "")
+    monkeypatch.setattr(settings, "allow_tools", "")
+    assert tool_is_allowed_by_policy("run_shell")[0] is True
+
+    monkeypatch.setattr(settings, "deny_tools", "run_shell,delete_path")
+    assert tool_is_allowed_by_policy("run_shell")[0] is False
+    assert tool_is_allowed_by_policy("read_file")[0] is True
+
+    monkeypatch.setattr(settings, "deny_tools", "")
+    monkeypatch.setattr(settings, "allow_tools", "read_file,list_dir")
+    assert tool_is_allowed_by_policy("read_file")[0] is True
+    assert tool_is_allowed_by_policy("run_shell")[0] is False
+
+
+def test_policy_filters_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.mistral_client import build_tool_schemas
+
+    monkeypatch.setattr(settings, "deny_tools", "run_shell,kill_process")
+    monkeypatch.setattr(settings, "allow_tools", "")
+    names = {s["function"]["name"] for s in build_tool_schemas()}
+    assert "run_shell" not in names
+    assert "kill_process" not in names
+    assert "read_file" in names
+
+
+def test_evaluate_respects_deny(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "deny_tools", "run_shell")
+    monkeypatch.setattr(settings, "allow_tools", "")
+    d = safety.evaluate("run_shell", {"command": "echo hi"}, "yolo", {}, "x")
+    assert d.allowed is False
+    assert "denied" in d.reason.lower()
+
+
+# ── new tool registration ────────────────────────────────────────────
+
+
+def test_new_tools_registered() -> None:
+    expected = {
+        "schedule_recurring",
+        "list_recurring",
+        "cancel_recurring",
+        "toggle_recurring",
+        "remember",
+        "recall",
+        "forget",
+    }
+    assert expected <= set(tools.TOOLS)
+
+
+def test_total_tool_count() -> None:
+    # 21 originals + 7 new = 28
+    assert len(tools.TOOLS) == 28
+
+
+# ── API routes (FastAPI TestClient) ──────────────────────────────────
+
+
+def test_list_conversations(client: TestClient) -> None:
+    resp = client.get("/api/conversations")
+    assert resp.status_code == 200
+    assert "conversations" in resp.json()
+
+
+def test_jobs_endpoint(client: TestClient) -> None:
+    resp = client.get("/api/jobs")
+    assert resp.status_code == 200
+    assert "jobs" in resp.json()
+
+
+def test_memory_endpoint(client: TestClient) -> None:
+    resp = client.get("/api/memory")
+    assert resp.status_code == 200
+    assert "entries" in resp.json()
+
+
+def test_capabilities_endpoint(client: TestClient) -> None:
+    resp = client.get("/api/capabilities")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "voice" in data
+    assert "allow_tools" in data
+
+
+def test_chat_without_api_key_returns_400(client: TestClient) -> None:
+    resp = client.post("/api/chat", json={"message": "hello"})
+    assert resp.status_code == 400
+
+
+def test_upload_image_returns_data_url(client: TestClient) -> None:
+    from app.config import settings
+
+    with tempfile.TemporaryDirectory() as td:
+        import app.main
+        orig = settings.uploads_dir
+        settings.uploads_dir = Path(td)
+        try:
+            resp = client.post(
+                "/api/upload",
+                files={"file": ("x.png", b"\x89PNG\r\n", "image/png")},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["ok"] is True
+            assert data["kind"] == "image"
+            assert "data:image" in data["data_url"]
+        finally:
+            settings.uploads_dir = orig
+
+
+def test_upload_non_image_saves_to_disk(client: TestClient) -> None:
+    from app.config import settings
+
+    with tempfile.TemporaryDirectory() as td:
+        orig = settings.uploads_dir
+        settings.uploads_dir = Path(td)
+        try:
+            resp = client.post(
+                "/api/upload",
+                files={"file": ("report.csv", b"a,b\n1,2", "text/csv")},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["kind"] == "file"
+            assert Path(data["path"]).exists()
+        finally:
+            settings.uploads_dir = orig

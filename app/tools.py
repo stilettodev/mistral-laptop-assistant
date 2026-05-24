@@ -460,14 +460,15 @@ def get_datetime(timezone: str = "") -> dict[str, Any]:
 
 
 def schedule_task(command: str, run_at: str) -> dict[str, Any]:
-    """Schedule a shell command to run later.
+    """Schedule a shell command to run later (one-shot).
 
     Args:
         command: Shell command to execute.
         run_at: When to run – format ``HH:MM`` (today/tomorrow) or
             ``YYYY-MM-DDTHH:MM`` for an absolute date/time.
 
-    Uses ``at`` on macOS/Linux and ``schtasks`` on Windows.
+    Uses ``at`` on macOS/Linux and ``schtasks`` on Windows. For
+    recurring jobs see :func:`schedule_recurring`.
     """
     sys_name = platform.system()
     try:
@@ -511,6 +512,95 @@ def schedule_task(command: str, run_at: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Recurring scheduler (in-process)
+# ---------------------------------------------------------------------------
+
+
+def schedule_recurring(
+    name: str,
+    when: str,
+    command: str = "",
+    prompt: str = "",
+) -> dict[str, Any]:
+    """Create a recurring job that runs in the assistant process.
+
+    The job survives restarts (persisted to disk). Provide either
+    ``command`` (shell) or ``prompt`` (re-ask the assistant), not both.
+
+    Args:
+        name: Human-readable label.
+        when: Schedule spec, e.g. ``every 30m`` · ``daily 09:30`` ·
+            ``weekly mon 18:00`` · ``hourly :15`` ·
+            ``cron */15 * * * *``.
+        command: Shell command to run on each tick (shell job).
+        prompt: Chat prompt to send to the assistant on each tick.
+    """
+    from .scheduler import SCHEDULER
+
+    try:
+        kind = "chat" if prompt and not command else "shell"
+        job = SCHEDULER.add(name=name, when=when, kind=kind, command=command, prompt=prompt)
+        return _result(True, job=job)
+    except ValueError as exc:
+        return _result(False, error=str(exc))
+
+
+def list_recurring() -> dict[str, Any]:
+    """List all recurring jobs with their next run time."""
+    from .scheduler import SCHEDULER
+
+    jobs = SCHEDULER.list()
+    return _result(True, count=len(jobs), jobs=jobs)
+
+
+def cancel_recurring(job_id: str) -> dict[str, Any]:
+    """Delete a recurring job by its id (see :func:`list_recurring`)."""
+    from .scheduler import SCHEDULER
+
+    ok = SCHEDULER.remove(job_id)
+    return _result(ok, id=job_id)
+
+
+def toggle_recurring(job_id: str, enabled: bool) -> dict[str, Any]:
+    """Enable or disable a recurring job."""
+    from .scheduler import SCHEDULER
+
+    ok = SCHEDULER.toggle(job_id, enabled)
+    return _result(ok, id=job_id, enabled=enabled)
+
+
+# ---------------------------------------------------------------------------
+# Long-term memory
+# ---------------------------------------------------------------------------
+
+
+def remember(key: str, value: str) -> dict[str, Any]:
+    """Save a fact to long-term memory (survives across sessions).
+
+    Memory is automatically included in the system prompt of every new
+    conversation. Good for preferences, paths, names – anything the
+    user expects you to know forever.
+    """
+    from .memory import remember as _remember
+
+    return _remember(key, value)
+
+
+def recall(key: str = "") -> dict[str, Any]:
+    """Read a fact (or all facts when ``key`` is empty)."""
+    from .memory import recall as _recall
+
+    return _recall(key)
+
+
+def forget(key: str) -> dict[str, Any]:
+    """Delete a fact from long-term memory."""
+    from .memory import forget as _forget
+
+    return _forget(key)
+
+
+# ---------------------------------------------------------------------------
 # Registry – mapped automatically into Mistral function schemas
 # ---------------------------------------------------------------------------
 
@@ -539,6 +629,13 @@ TOOLS: dict[str, Any] = {
         get_env,
         get_datetime,
         schedule_task,
+        schedule_recurring,
+        list_recurring,
+        cancel_recurring,
+        toggle_recurring,
+        remember,
+        recall,
+        forget,
     ]
 }
 

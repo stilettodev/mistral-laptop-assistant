@@ -50,5 +50,29 @@ class Settings(BaseSettings):
         default_factory=lambda: Path.home() / ".mistral_assistant_history.json"
     )
 
+    # Persistent state
+    scheduler_file: Path = Field(
+        default_factory=lambda: Path.home() / ".mistral_assistant_jobs.json"
+    )
+    memory_file: Path = Field(
+        default_factory=lambda: Path.home() / ".mistral_assistant_memory.json"
+    )
+    conversations_dir: Path = Field(
+        default_factory=lambda: Path.home() / ".mistral_assistant_chats"
+    )
+    uploads_dir: Path = Field(
+        default_factory=lambda: Path.home() / ".mistral_assistant_uploads"
+    )
+
+    # Voice
+    stt_model: str = Field(default="voxtral-mini-latest")
+    tts_model: str = Field(default="")  # blank = use server default
+    tts_voice: str = Field(default="")  # blank = use server default
+    tts_enabled: bool = Field(default=False)
+
+    # Per-tool gating (comma-separated names; empty = no restriction)
+    allow_tools: str = Field(default="")
+    deny_tools: str = Field(default="")
+
 
 settings = Settings()

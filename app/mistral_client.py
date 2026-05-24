@@ -51,9 +51,18 @@ def _python_to_jsonschema(annotation: Any) -> dict[str, Any]:
 
 
 def build_tool_schemas() -> list[dict[str, Any]]:
-    """Generate Mistral function-calling JSON schemas from TOOLS."""
+    """Generate Mistral function-calling JSON schemas from TOOLS.
+
+    Tools blocked by the ``MLA_ALLOW_TOOLS`` / ``MLA_DENY_TOOLS`` policy
+    are filtered out, so the model never sees them.
+    """
+    from .safety import tool_is_allowed_by_policy
+
     schemas: list[dict[str, Any]] = []
     for name, fn in TOOLS.items():
+        allowed, _ = tool_is_allowed_by_policy(name)
+        if not allowed:
+            continue
         sig = inspect.signature(fn)
         properties: dict[str, Any] = {}
         required: list[str] = []
