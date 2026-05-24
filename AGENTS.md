@@ -63,6 +63,17 @@ uv run mla --open          # or: uv run python -m app
 - The web UI is a single file each (`index.html` / `app.js` /
   `styles.css`) — no bundler. Fonts: Instrument Serif, IBM Plex Sans,
   JetBrains Mono.
+- **Frontend triplet must move together.** `index.html`, `app.js`, and
+  `styles.css` reference each other by id and class. If you rewrite the
+  HTML, update the JS selectors (`getElementById` / `querySelector`) and
+  add CSS for the new class names *in the same commit*. Last time this
+  was forgotten (commit `99b7496`) every sidebar control went dead at
+  boot. JS selectors live in the top `const … = $("…")` block + the
+  `bindUI()` body; classes the JS renders dynamically (`.msg`,
+  `.tool-card`, `.confirm-card`, `.btn`, `.error-card`, `.attach-*`,
+  `.preview-img`, `.typing`, `.tab-pane`) must stay styled.
+- User prefers PRs to be pushed automatically and is OK with pushing
+  straight to `master` ("push always" / "push to master").
 - Default bind is `127.0.0.1`. Don't bind on 0.0.0.0 unless asked.
 - The auto router's LLM fallback uses `MLA_ROUTER_MODEL`
   (default `ministral-3b-latest`) for cost.
