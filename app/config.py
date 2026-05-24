@@ -13,11 +13,15 @@ class Settings(BaseSettings):
     """Runtime configuration for the assistant.
 
     Values are read from environment variables and an optional `.env`
-    file in the project root. None of the secrets ever leave the host.
+    file in the project root or `~/.mistral_assistant.env`.
+    None of the secrets ever leave the host.
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=[
+            str(Path.home() / ".mistral_assistant.env"),
+            ".env",
+        ],
         env_file_encoding="utf-8",
         env_prefix="MLA_",
         extra="ignore",

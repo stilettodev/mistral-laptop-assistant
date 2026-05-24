@@ -70,57 +70,39 @@ mla audit --tail
 
 ---
 
-## Install & run
-
-### 1 · Clone
+## Install & run — one command
 
 ```bash
-git clone <this-repo> mistral-laptop-assistant
-cd mistral-laptop-assistant
+# Install: sets up uv, clones repo, runs uv sync, prompts for API key
+curl -LsSf https://yourrepo/install.sh | bash
+
+# Start: opens browser automatically
+cd ~/mistral-laptop-assistant && uv run mla --open
 ```
 
-### 2 · Install (with [uv](https://docs.astral.sh/uv/), recommended)
+Or from an existing clone:
 
 ```bash
 uv sync
+uv run mla --open -k YOUR_KEY_HERE          # one-line start
+uv run mla -k sk-... --open                  # -k / --key is the fastest
 ```
 
-> Don't have `uv`? Install it once:
-> `curl -LsSf https://astral.sh/uv/install.sh | sh`
->
-> Or use plain pip:
-> `python3.11 -m venv .venv && source .venv/bin/activate && pip install -e .`
+On first run without a key, it prompts interactively and saves to
+`~/.mistral_assistant.env` so you never have to type it again.
 
-### 3 · Configure
+### Quick reference
 
-```bash
-cp .env.example .env
-# then edit .env and paste your key:
-#   MLA_MISTRAL_API_KEY=...      ← get one at https://console.mistral.ai/
-```
-
-### 4 · Launch
-
-```bash
-uv run mla --open          # starts the server and opens your browser
-# or
-uv run python -m app
-```
-
-Then chat away at <http://127.0.0.1:8000>.
-
-### Common flags
-
-| Flag | What it does |
+| Command | What it does |
 |---|---|
-| `--host 0.0.0.0` | Bind on all interfaces (default `127.0.0.1`). |
-| `--port 8080`    | Use a different port. |
-| `--open`         | Open the browser automatically. |
-| `--reload`       | Auto-reload on code changes (dev only). |
-| `--window`       | Open a real native OS window (pywebview, needs `--extra desktop`). |
-| `--tray`         | Start a system-tray icon (pystray, needs `--extra desktop`). |
-
----
+| `uv run mla --open` | Start server + open browser |
+| `uv run mla -k KEY --open` | One-shot: set key + start + open |
+| `uv run mla --window` | Native OS window (needs `--extra desktop`) |
+| `uv run mla --tray` | System tray icon (needs `--extra desktop`) |
+| `uv run mla audit --tail` | Live audit log |
+| `uv run mla jobs` | Show recurring scheduled jobs |
+| `uv run mla memory` | Show long-term memory entries |
+| `uv run pytest tests/ -v` | Run 44 offline tests |
 
 ## Talk to it — examples
 

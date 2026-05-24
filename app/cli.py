@@ -46,7 +46,24 @@ def _print_banner(url: str) -> None:
 def cmd_serve(args: argparse.Namespace) -> int:
     host, port = args.host, args.port
     url = f"http://{host if host != '0.0.0.0' else '127.0.0.1'}:{port}/"
+
+    # --key flag overrides everything else
+    if args.api_key:
+        import os
+        os.environ["MLA_MISTRAL_API_KEY"] = args.api_key
+        Path.home().joinpath(".mistral_assistant.env").write_text(
+            f"MLA_MISTRAL_API_KEY={args.api_key}\n"
+        )
+        # Re-exec so pydantic-settings picks up the new key
+        import os as _os, sys as _sys
+        _os.execv(_sys.executable, [_sys.executable, *_sys.argv])
+
     _print_banner(url)
+
+    if not settings.mistral_api_key:
+        key = _prompt_api_key()
+        if not key:
+            return 1
 
     # Build the post-startup background tasks.
     def post_start() -> None:
@@ -77,6 +94,35 @@ def cmd_serve(args: argparse.Namespace) -> int:
         reload=args.reload,
     )
     return 0
+
+
+def _prompt_api_key() -> str | None:
+    """Interactively ask for an API key and persist it to ~/.mistral_assistant.env.
+
+    After saving, re-execs the current process so settings pick it up.
+    """
+    import getpass, os, sys
+
+    print()
+    print("  🤖  MLA needs your Mistral API key")
+    print("  Get one free at: https://console.mistral.ai/")
+    print()
+    try:
+        key = getpass.getpass("  Paste your key (hidden): ").strip()
+    except EOFError:
+        try:
+            key = input("  Paste your key: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            key = ""
+    if not key:
+        print("  No key entered. Set MLA_MISTRAL_API_KEY in .env and restart.")
+        return None
+    env_path = Path.home() / ".mistral_assistant.env"
+    env_path.write_text(f"MLA_MISTRAL_API_KEY={key}\n")
+    print(f"  ✓ saved to {env_path}")
+    # Re-exec so pydantic-settings picks up the new env var.
+    print("  Starting server…\n")
+    os.execv(sys.executable, [sys.executable, *sys.argv])
 
 
 def cmd_audit(args: argparse.Namespace) -> int:
@@ -151,6 +197,8 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--tray", action="store_true", help="add a system tray icon")
     serve.add_argument("--reload", action="store_true", help="auto-reload on code changes")
     serve.add_argument("--quiet", action="store_true", help="reduce uvicorn log noise")
+    serve.add_argument("-k", "--key", dest="api_key", default="",
+                      help="Mistral API key (or set MLA_MISTRAL_API_KEY env var / .env)")
     serve.set_defaults(func=cmd_serve)
 
     audit = sub.add_parser("audit", help="show the tool-call audit log")
