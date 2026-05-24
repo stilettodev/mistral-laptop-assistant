@@ -120,9 +120,13 @@ def _prompt_api_key() -> str | None:
     env_path = Path.home() / ".mistral_assistant.env"
     env_path.write_text(f"MLA_MISTRAL_API_KEY={key}\n")
     print(f"  ✓ saved to {env_path}")
-    # Re-exec so pydantic-settings picks up the new env var.
+    # Re-exec with the key injected into the environment BEFORE Python starts,
+    # so pydantic-settings picks it up at import time.
+    import os as _os, sys as _sys, subprocess as _subprocess
+    env = dict(_os.environ)
+    env["MLA_MISTRAL_API_KEY"] = key
     print("  Starting server…\n")
-    os.execv(sys.executable, [sys.executable, *sys.argv])
+    _os.execve(_sys.executable, [_sys.executable, "-m", "app", *_sys.argv[1:]], env)
 
 
 def cmd_audit(args: argparse.Namespace) -> int:
