@@ -118,6 +118,62 @@ def _serialize_messages(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+# Brief nudge appended after tool-result batches so the model gives a
+# concise final answer instead of calling more tools.
+_FINISH_GUIDANCE = (
+    " — Tool results are above. Provide a short, direct final answer now. "
+    "Do NOT call any more tools."
+)
+
+
+def _synthesise_results(
+    model: str,
+    tools_schema: list[dict[str, Any]],
+    history: list[dict[str, Any]],
+    mc: Any,
+) -> tuple[str | None, list[dict[str, Any]]]:
+    """Append a guidance message and call chat.complete once for the final answer.
+
+    Returns (final_text, new_tool_calls). The caller yields the text and
+    handles any remaining tool calls in the next loop iteration.
+    This does NOT count as a new step.
+    """
+    history.append(
+        {"role": "user", "content": _FINISH_GUIDANCE}
+    )
+    try:
+        response = mc.client().chat.complete(
+            model=model,
+            messages=_serialize_messages(history),
+            tools=tools_schema,
+            tool_choice="auto",
+            temperature=0.2,
+        )
+    except Exception as exc:
+        log.warning("synthesis call failed: %s", exc)
+        history.pop()
+        return None, []
+
+    history.pop()
+
+    choice = response.choices[0].message
+    final_text = choice.content or ""
+    raw_tc = getattr(choice, "tool_calls", None) or []
+    tool_calls_out = [
+        {"id": tc.id, "name": tc.function.name, "arguments": json.loads(tc.function.arguments)}
+        for tc in raw_tc
+    ]
+
+    if not tool_calls_out:
+        history.append({"role": "assistant", "content": final_text})
+        return final_text, []
+
+    # Model still wants tools — leave history as-is (the pending branch will
+    # re-add the assistant message naturally) and return the calls so the
+    # caller can set pending.
+    return "", tool_calls_out
+
+
 # ---------------------------------------------------------------------------
 # Conversation store
 # ---------------------------------------------------------------------------
@@ -221,15 +277,16 @@ async def run_agent(
     step = 0
 
     while step < settings.max_agent_steps:
-        step += 1
-
-        # If we have pending tool calls awaiting confirmation, execute now.
+        # Execute all pending tool calls as one batch (they are a consequence
+        # of the single model call that produced them — don't charge a step).
         if pending:
             tool_calls = pending
             pending = []  # consumed
             CONVERSATIONS.set_pending(conversation_id, [])
             assistant_text = ""
+            # NO step += 1 here — this is a continuation, not a new model step.
         else:
+            step += 1
             yield {"type": "status", "data": f"Thinking with {model} (step {step})…"}
             try:
                 response = await asyncio.to_thread(
@@ -242,8 +299,7 @@ async def run_agent(
                 )
             except Exception as exc:
                 err_str = str(exc).lower()
-                # Retry with fallback key on 401 / 429
-                if any(x in err_str for x in ["401", "unauthorized", "403", "forbidden"])                    or any(x in err_str for x in ["429", "rate limit", "quota"]):
+                if any(x in err_str for x in ["401", "unauthorized", "403", "forbidden"])                        or any(x in err_str for x in ["429", "rate limit", "quota"]):
                     next_key = mc.rotate()
                     if next_key:
                         audit("key_rotate", {"cid": conversation_id, "from": mc.current_key[:6]})
@@ -341,45 +397,63 @@ async def run_agent(
             CONVERSATIONS.persist(conversation_id)
             return
 
-        # Execute approved tool calls in order.
-        for tc in approved:
-            yield {
-                "type": "tool_call",
-                "data": {"id": tc["id"], "name": tc["name"], "arguments": tc["arguments"]},
-            }
-            fn = TOOLS.get(tc["name"])
-            if fn is None:
-                result: dict[str, Any] = {"ok": False, "error": f"unknown tool {tc['name']!r}"}
-            else:
-                try:
-                    started = time.time()
-                    result = await asyncio.to_thread(fn, **tc["arguments"])
-                    result.setdefault("duration_ms", int((time.time() - started) * 1000))
-                except TypeError as exc:
-                    result = {"ok": False, "error": f"bad arguments: {exc}"}
-                except Exception as exc:  # noqa: BLE001 – we want to surface anything
-                    result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-            audit(
-                "tool_executed",
-                {
-                    "cid": conversation_id,
-                    "tool": tc["name"],
-                    "args": tc["arguments"],
-                    "ok": bool(result.get("ok")),
-                },
-            )
-            history.append(
-                {
+        # Execute approved tool calls in order, then hand all results to the model
+        # in a single follow-up call (saves steps and avoids the model re-calling
+        # the same tools when it sees partial results).
+        if approved:
+            for tc in approved:
+                yield {
+                    "type": "tool_call",
+                    "data": {"id": tc["id"], "name": tc["name"], "arguments": tc["arguments"]},
+                }
+                fn = TOOLS.get(tc["name"])
+                if fn is None:
+                    result: dict[str, Any] = {"ok": False, "error": f"unknown tool {tc['name']!r}"}
+                else:
+                    try:
+                        started = time.time()
+                        result = await asyncio.to_thread(fn, **tc["arguments"])
+                        result.setdefault("duration_ms", int((time.time() - started) * 1000))
+                    except TypeError as exc:
+                        result = {"ok": False, "error": f"bad arguments: {exc}"}
+                    except Exception as exc:  # noqa: BLE001
+                        result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+                audit(
+                    "tool_executed",
+                    {
+                        "cid": conversation_id,
+                        "tool": tc["name"],
+                        "args": tc["arguments"],
+                        "ok": bool(result.get("ok")),
+                    },
+                )
+                tool_result_entry = {
                     "role": "tool",
                     "name": tc["name"],
                     "tool_call_id": tc["id"],
                     "content": json.dumps(result, default=str),
                 }
-            )
-            yield {
-                "type": "tool_result",
-                "data": {"id": tc["id"], "name": tc["name"], "result": result},
-            }
+                history.append(tool_result_entry)
+                yield {
+                    "type": "tool_result",
+                    "data": {"id": tc["id"], "name": tc["name"], "result": result},
+                }
+
+            # After batch execution, synthesise all results for the model in one
+            # go so it can form a final answer rather than issuing more tool calls.
+            # This does NOT charge a step.
+            if not needs_confirm:
+                final_text, new_tc = _synthesise_results(model, tools_schema, history, mc)
+                if final_text:
+                    yield {"type": "final", "data": final_text}
+                    audit("chat_end", {"cid": conversation_id, "steps": step})
+                    CONVERSATIONS.persist(conversation_id)
+                    return
+                if new_tc:
+                    # Model still wants tools — they'll be handled on the next loop
+                    # iteration (which charges a step since pending=[] there).
+                    pending = new_tc
+                    continue
 
     yield {
         "type": "error",

@@ -283,11 +283,41 @@ def open_app(name: str) -> dict[str, Any]:
 
 
 def open_url(url: str) -> dict[str, Any]:
-    """Open a URL in the user's default browser."""
+    """Open a URL and retrieve its content for the agent.
+
+    Uses Tavily's extract API (if configured) to pull the page content so
+    the agent can see what was retrieved rather than just opening a tab.
+    Falls back to opening the URL in the browser when no API key is set.
+    """
     if not url.startswith(("http://", "https://", "file://")):
         url = "https://" + url
-    ok = webbrowser.open(url, new=2)
-    return _result(ok, url=url)
+
+    # Open in browser regardless — user should see it.
+    webbrowser.open(url, new=2)
+
+    # Try to retrieve content via Tavily so the model sees it.
+    tavily_key = os.environ.get("TAVILY_API_KEY")
+    if tavily_key:
+        try:
+            import urllib.request
+
+            req = urllib.request.Request(
+                "https://api.tavily.com/extract",
+                data=json.dumps({"urls": [url], "max_results": 1}).encode(),
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {tavily_key}"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+            results = data.get("results", [])
+            if results and results[0].get("raw_content"):
+                content = results[0]["raw_content"]
+                # Truncate long pages so the message doesn't explode.
+                return _result(True, url=url, content=content[: 15_000] if len(content) > 15_000 else content)
+        except Exception:  # noqa: BLE001 — non-fatal; fall through to plain open
+            pass
+
+    return _result(True, url=url)
 
 
 def notify(title: str, message: str = "") -> dict[str, Any]:
