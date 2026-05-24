@@ -29,6 +29,36 @@ def get_client(api_key: str | None = None) -> Mistral:
     return Mistral(api_key=key)
 
 
+class MultiKeyClient:
+    """Wrapper that cycles through multiple API keys on 401/429 errors."""
+
+    def __init__(self, keys: list[str] | None = None):
+        self._keys = keys or settings.all_api_keys
+        self._index = 0
+
+    @property
+    def current_key(self) -> str:
+        idx = self._index % len(self._keys)
+        return self._keys[idx]
+
+    def client(self) -> Mistral:
+        return get_client(self.current_key)
+
+    def rotate(self) -> str | None:
+        """Advance to the next key. Returns the new key or None if no more."""
+        if len(self._keys) <= 1:
+            return None
+        self._index += 1
+        return self.current_key
+
+    @property
+    def has_fallback(self) -> bool:
+        return len(self._keys) > 1
+
+    def exhausted(self) -> bool:
+        return self._index >= len(self._keys)
+
+
 # ---------------------------------------------------------------------------
 # Tool schema generation
 # ---------------------------------------------------------------------------

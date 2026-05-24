@@ -49,6 +49,26 @@ Use the **Model** dropdown in the sidebar to:
 
   The chosen model and reason are shown above the answer.
 
+## Personas
+
+Switch between two personalities per conversation:
+
+| Persona | When to use |
+|---|---|
+| **☕ Jarvis** | Casual chat, quick tasks, everyday help. Warm and conversational. |
+| **🔬 Veronica** | Research, deep analysis, structured reports. Precise and methodical. |
+
+## Multi-key fallback
+
+Add multiple API keys to `MLA_MISTRAL_API_KEYS` (comma-separated) and the
+assistant will automatically rotate to a fallback key when it hits a
+`429 Rate Limit` or `401 Unauthorized` error.
+
+```
+MLA_MISTRAL_API_KEY=your_primary_key
+MLA_MISTRAL_API_KEYS=fallback_key1,fallback_key2
+```
+
 ## Safety modes
 
 | Mode | Behaviour |

@@ -27,7 +27,17 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    mistral_api_key: str = Field(default="", description="Mistral API key.")
+    # ── API Keys ─────────────────────────────────────────────────────────────
+    mistral_api_key: str = Field(default="", description="Primary Mistral API key.")
+    mistral_api_keys: str = Field(
+        default="",
+        description=(
+            "Additional fallback API keys, comma-separated. "
+            "Used when the primary key hits a 429/401 error. "
+            "Format: key1,key2,key3 (primary key is always tried first)"
+        ),
+    )
+
     default_model: str = Field(
         default="auto",
         description="Default model id or 'auto' for automatic routing.",
@@ -39,6 +49,12 @@ class Settings(BaseSettings):
 
     host: str = Field(default="127.0.0.1")
     port: int = Field(default=8000)
+
+    # ── Personas ──────────────────────────────────────────────────────────────
+    default_persona: Literal["jarvis", "veronica"] = Field(
+        default="jarvis",
+        description="Default personality: 'jarvis' (casual) or 'veronica' (research)",
+    )
 
     # Safety
     safety_mode: Literal["strict", "normal", "yolo"] = Field(default="normal")
@@ -77,6 +93,20 @@ class Settings(BaseSettings):
     # Per-tool gating (comma-separated names; empty = no restriction)
     allow_tools: str = Field(default="")
     deny_tools: str = Field(default="")
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+    @property
+    def all_api_keys(self) -> list[str]:
+        """Return all API keys in priority order (primary first, then fallbacks)."""
+        keys = []
+        if self.mistral_api_key:
+            keys.append(self.mistral_api_key)
+        if self.mistral_api_keys:
+            for k in self.mistral_api_keys.split(","):
+                k = k.strip()
+                if k and k not in keys:
+                    keys.append(k)
+        return keys
 
 
 settings = Settings()

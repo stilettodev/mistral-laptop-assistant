@@ -38,6 +38,10 @@ class ChatRequest(BaseModel):
         description="Optional data: URLs or http(s) URLs of images attached to this turn.",
     )
     speak: bool = Field(default=False, description="Synthesize the final answer.")
+    persona: str = Field(
+        default="",
+        description="Personality: 'jarvis' (casual) or 'veronica' (research).",
+    )
 
 
 class SpeakRequest(BaseModel):
@@ -50,11 +54,25 @@ class ModelInfo(BaseModel):
     capabilities: list[str] = Field(default_factory=list)
 
 
+PERSONAS: dict[str, str] = {
+    "jarvis": """PERSONALITY — you are JARVIS, a friendly, casual AI companion.
+Be warm, conversational, and helpful. Use plain language — not clinical or robotic.
+Crack a light joke when appropriate. Keep responses natural and flowing.
+You are like a smart mate who happens to live on the user's laptop.""",
+
+    "veronica": """PERSONALITY — you are VERONICA, a precise, rigorous research assistant.
+Think deeply before answering. Cite specifics, quote accurately, show your reasoning.
+Be direct and factual. Prefer structured responses: headings, bullets, or numbered points.
+You are a thorough researcher who respects the user's time and intelligence.""",
+}
+
+
 class StatusResponse(BaseModel):
     ok: bool
     api_key_configured: bool
     safety_mode: str
     default_model: str
+    default_persona: str
     workspace_dir: str
     audit_log: str
     platform: str

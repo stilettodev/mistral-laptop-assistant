@@ -61,11 +61,12 @@ if (-not $CurrentKey) {
     $PastKey = Read-Host "  Paste your MLA_MISTRAL_API_KEY (hidden)" -AsSecureString
     $PastKey = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($PastKey)).Trim()
     if ($PastKey) {
-        if (Test-Path $ENV_FILE) {
-            (Get-Content $ENV_FILE) -replace "^MLA_MISTRAL_API_KEY=.*", "MLA_MISTRAL_API_KEY=$PastKey" | Set-Content $ENV_FILE
-        } else {
-            "MLA_MISTRAL_API_KEY=$PastKey" | Set-Content $ENV_FILE
+        $Body = "MLA_MISTRAL_API_KEY=$PastKey"
+        $Extra = Read-Host "  Add fallback keys (comma-separated, or Enter to skip)"
+        if ($Extra -and $Extra.Trim()) {
+            $Body += "`nMLA_MISTRAL_API_KEYS=$($Extra.Trim())"
         }
+        Set-Content -Path $ENV_FILE -Value $Body -NoNewline
         Write-Ok "API key saved to .env"
     }
 } else {

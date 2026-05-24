@@ -81,6 +81,7 @@ def status() -> StatusResponse:
         api_key_configured=bool(settings.mistral_api_key),
         safety_mode=settings.safety_mode,
         default_model=settings.default_model,
+        default_persona=settings.default_persona,
         workspace_dir=str(settings.workspace_dir),
         audit_log=str(settings.audit_log),
         platform=platform.platform(),

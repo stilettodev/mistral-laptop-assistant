@@ -23,6 +23,7 @@ const speakToggle  = $("speakToggle");
 const state = {
   conversationId: crypto.randomUUID(),
   safety: "normal",
+  persona: "jarvis",  // "jarvis" or "veronica" 
   pendingConfirmations: null,
   busy: false,
   modelsById: {},
@@ -81,7 +82,8 @@ function fillSettings(status) {
   const grid = $("settingsGrid");
   grid.innerHTML = "";
   const rows = [
-    ["API key",      status.api_key_configured ? "✅ loaded" : "❌ missing"],
+    ["API key",       status.api_key_configured ? "✅ loaded" : "❌ missing"],
+    ["Persona",       (status.default_persona || "jarvis") + " (default)"],
     ["Platform",     status.platform],
     ["Workspace",    status.workspace_dir],
     ["Audit log",    status.audit_log],
@@ -133,6 +135,21 @@ function bindUI() {
     li.addEventListener("click", () => {
       input.value = li.textContent;
       input.focus();
+    });
+  });
+
+  // Persona switcher
+  document.querySelectorAll(".persona-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const p = btn.dataset.persona;
+      state.persona = p;
+      document.querySelectorAll(".persona-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("welcomeBadge").textContent = p === "jarvis" ? "☕ Jarvis" : "🔬 Veronica";
+      document.body.dataset.persona = p;
+      // Update avatar if chat exists
+      const assistantAvatars = document.querySelectorAll(".msg.assistant .avatar");
+      assistantAvatars.forEach(a => { a.textContent = p === "jarvis" ? "J" : "V"; a.style.background = p === "jarvis" ? "rgba(124,111,255,0.12)" : "rgba(0,200,150,0.12)"; a.style.color = p === "jarvis" ? "#7c6fff" : "#00c896"; });
     });
   });
 
@@ -744,6 +761,7 @@ function renderConfirmation(calls) {
       safety_mode: state.safety,
       confirmations: cs,
       reset: false,
+      persona: state.persona,
       images: [],
       speak: speakToggle.checked,
     });

@@ -22,7 +22,7 @@ from .memory import context_block
 from .mistral_client import build_tool_schemas, get_client
 from .router import route
 from .safety import audit, evaluate
-from .schemas import ChatRequest
+from .schemas import ChatRequest, PERSONAS
 from .tools import TOOLS
 
 log = logging.getLogger(__name__)
@@ -47,22 +47,26 @@ Operating rules:
  * NEVER fabricate results. If a tool fails, surface the real error.
 
 The current working directory the user lives in is {home}. The audit
-log of every tool call is written to {audit}."""
+log of every tool call is written to {audit}.
 
+{persona}
+"""
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _build_system_prompt() -> str:
+def _build_system_prompt(persona: str = "jarvis") -> str:
     import os
 
+    persona_block = PERSONAS.get(persona, PERSONAS["jarvis"])
     base = SYSTEM_PROMPT.format(
         system=platform.platform(),
         user=os.environ.get("USER") or os.environ.get("USERNAME") or "you",
         home=str(settings.workspace_dir),
         audit=str(settings.audit_log),
+        persona=persona_block,
     )
     mem = context_block()
     if mem:
@@ -184,8 +188,9 @@ async def run_agent(
         CONVERSATIONS.reset(conversation_id)
         history = CONVERSATIONS.get(conversation_id)
 
+    persona = request.persona or settings.default_persona
     if not history:
-        history.append({"role": "system", "content": _build_system_prompt()})
+        history.append({"role": "system", "content": _build_system_prompt(persona)})
 
     # Replay any pending tool calls awaiting confirmation.
     pending = CONVERSATIONS.pending(conversation_id)
@@ -210,7 +215,8 @@ async def run_agent(
     if pending:
         model = request.model if request.model != "auto" else "mistral-medium-latest"
 
-    client = get_client()
+    from .mistral_client import MultiKeyClient
+    mc = MultiKeyClient()
     tools_schema = build_tool_schemas()
     step = 0
 
@@ -227,7 +233,7 @@ async def run_agent(
             yield {"type": "status", "data": f"Thinking with {model} (step {step})…"}
             try:
                 response = await asyncio.to_thread(
-                    client.chat.complete,
+                    mc.client().chat.complete,
                     model=model,
                     messages=_serialize_messages(history),
                     tools=tools_schema,
@@ -235,6 +241,13 @@ async def run_agent(
                     temperature=0.2,
                 )
             except Exception as exc:
+                err_str = str(exc).lower()
+                # Retry with fallback key on 401 / 429
+                if any(x in err_str for x in ["401", "unauthorized", "403", "forbidden"])                    or any(x in err_str for x in ["429", "rate limit", "quota"]):
+                    next_key = mc.rotate()
+                    if next_key:
+                        audit("key_rotate", {"cid": conversation_id, "from": mc.current_key[:6]})
+                        continue
                 audit("chat_error", {"cid": conversation_id, "err": str(exc)})
                 yield {"type": "error", "data": f"Mistral API error: {exc}"}
                 return
