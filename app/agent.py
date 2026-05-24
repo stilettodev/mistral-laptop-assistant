@@ -135,11 +135,12 @@ def _serialize_messages(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 _FINISH_GUIDANCE = (
-    " Output ONLY a markdown list. No intro, no apology, no extra sentences. "
-    "Format each result as:\n"
+    " A web_search was just executed. The tool result is in your context above — "
+    "it contains a 'results' array with fields: 'title', 'url', 'snippet'. "
+    "Output every result as one markdown list item:\n"
     "- <title>: <url>\n\n"
-    "Example: '- Batman vs Iron Man: https://example.com/article'\n\n"
-    "Repeat for every result returned above. Start directly with the first '-'."
+    "Extract 'title' and 'url' from each result. Write ONLY the list. "
+    "No intro, no summary, no apology, no analysis. Start with '-' on the first line."
 )
 
 
@@ -166,7 +167,7 @@ async def _synthesise_and_stream(
             messages=_serialize_messages(history),
             tools=tools_schema,
             tool_choice="auto",
-            temperature=0.2,
+            temperature=0.0,
             stream=True,
         )
     except Exception as exc:
