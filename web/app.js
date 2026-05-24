@@ -1,6 +1,6 @@
 // Mistral Laptop Assistant — frontend
 // Handles SSE chat, voice in/out, image attachments, tabs (history /
-// jobs / memory / settings) and conversation persistence.
+// jobs / memory) and conversation persistence.
 
 const $ = (id) => document.getElementById(id);
 
@@ -9,16 +9,18 @@ const composer     = $("composer");
 const input        = $("input");
 const sendBtn      = $("sendBtn");
 const modelPicker  = $("modelPicker");
-const modelHint    = $("modelHint");
-const safetySeg    = $("safetySeg");
 const newChatBtn   = $("newChat");
-const statusEl     = $("status");
-const tabs         = $("tabs");
+const statusDot    = $("statusDot");
+const statusText   = $("statusText");
+const sectionNav   = document.querySelector(".section-nav");
+const safetyBtns   = document.querySelector(".safety-btns");
 const micBtn       = $("micBtn");
 const attachBtn    = $("attachBtn");
 const fileInput    = $("fileInput");
 const attachStrip  = $("attachStrip");
 const speakToggle  = $("speakToggle");
+const modelChip    = $("modelChip");
+const systemInfo   = $("systemInfo");
 
 const state = {
   conversationId: crypto.randomUUID(),
@@ -44,16 +46,26 @@ const state = {
 async function loadStatus() {
   try {
     const data = await (await fetch("/api/status")).json();
-    statusEl.querySelector(".dot").className =
-      "dot " + (data.api_key_configured ? "ok" : "err");
-    statusEl.querySelector(".status-text").textContent = data.api_key_configured
-      ? `online · ${shorten(data.platform)}`
-      : "no API key — set MLA_MISTRAL_API_KEY";
-    fillSettings(data);
+    setStatus(data.api_key_configured ? "ok" : "err",
+      data.api_key_configured
+        ? `online · ${shorten(data.platform)}`
+        : "no API key — set MLA_MISTRAL_API_KEY");
+    if (systemInfo) systemInfo.textContent = shorten(data.platform);
+    if (data.default_persona) {
+      state.persona = data.default_persona;
+      document.body.dataset.persona = data.default_persona;
+      document.querySelectorAll(".persona-btn").forEach((b) =>
+        b.classList.toggle("active", b.dataset.persona === data.default_persona)
+      );
+    }
   } catch {
-    statusEl.querySelector(".dot").className = "dot err";
-    statusEl.querySelector(".status-text").textContent = "server unreachable";
+    setStatus("err", "server unreachable");
   }
+}
+
+function setStatus(kind, label) {
+  if (statusDot) statusDot.className = "status-dot pulse-soft " + kind;
+  if (statusText) statusText.textContent = label;
 }
 
 async function loadCapabilities() {
@@ -72,37 +84,21 @@ async function loadModels() {
     const opt = document.createElement("option");
     opt.value = m.id;
     opt.textContent = m.id === "auto" ? "🤖 auto — let the agent pick" : m.id;
+    if (m.description) opt.title = m.description;
     modelPicker.appendChild(opt);
   }
   modelPicker.value = "auto";
-  updateModelHint();
+  updateModelChip();
 }
 
-function fillSettings(status) {
-  const grid = $("settingsGrid");
-  grid.innerHTML = "";
-  const rows = [
-    ["API key",       status.api_key_configured ? "✅ loaded" : "❌ missing"],
-    ["Persona",       (status.default_persona || "jarvis") + " (default)"],
-    ["Platform",     status.platform],
-    ["Workspace",    status.workspace_dir],
-    ["Audit log",    status.audit_log],
-    ["Safety",       status.safety_mode],
-    ["Default model",status.default_model],
-  ];
-  for (const [k, v] of rows) {
-    const dt = document.createElement("dt"); dt.textContent = k;
-    const dd = document.createElement("dd"); dd.textContent = v;
-    grid.append(dt, dd);
-  }
-}
+function fillSettings() { /* settings tab removed in redesign */ }
 
 function bindUI() {
-  modelPicker.addEventListener("change", updateModelHint);
+  modelPicker.addEventListener("change", updateModelChip);
 
-  safetySeg.querySelectorAll("button").forEach((b) => {
+  safetyBtns.querySelectorAll(".safety-btn").forEach((b) => {
     b.addEventListener("click", () => {
-      safetySeg.querySelectorAll("button").forEach((x) => x.classList.remove("active"));
+      safetyBtns.querySelectorAll(".safety-btn").forEach((x) => x.classList.remove("active"));
       b.classList.add("active");
       state.safety = b.dataset.mode;
     });
@@ -131,9 +127,10 @@ function bindUI() {
     refreshHistory();
   });
 
-  document.querySelectorAll("#examples li").forEach((li) => {
-    li.addEventListener("click", () => {
-      input.value = li.textContent;
+  // Quick-action cards in the sidebar
+  document.querySelectorAll("#examples .quick-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      input.value = card.dataset.q || card.textContent.trim();
       input.focus();
     });
   });
@@ -145,19 +142,20 @@ function bindUI() {
       state.persona = p;
       document.querySelectorAll(".persona-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
-      document.getElementById("welcomeBadge").textContent = p === "jarvis" ? "☕ Jarvis" : "🔬 Veronica";
       document.body.dataset.persona = p;
-      // Update avatar if chat exists
-      const assistantAvatars = document.querySelectorAll(".msg.assistant .avatar");
-      assistantAvatars.forEach(a => { a.textContent = p === "jarvis" ? "J" : "V"; a.style.background = p === "jarvis" ? "rgba(124,111,255,0.12)" : "rgba(0,200,150,0.12)"; a.style.color = p === "jarvis" ? "#7c6fff" : "#00c896"; });
+      // Update avatar of any already-rendered assistant messages
+      const letter = p === "veronica" ? "V" : "J";
+      document.querySelectorAll(".msg.assistant .avatar").forEach((a) => {
+        a.textContent = letter;
+      });
     });
   });
 
-  // Tabs
-  tabs.addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-tab]");
+  // Section nav tabs
+  sectionNav.addEventListener("click", (e) => {
+    const btn = e.target.closest(".nav-btn");
     if (!btn) return;
-    tabs.querySelectorAll("button").forEach((x) => x.classList.remove("active"));
+    sectionNav.querySelectorAll(".nav-btn").forEach((x) => x.classList.remove("active"));
     btn.classList.add("active");
     const which = btn.dataset.tab;
     document.querySelectorAll(".tab-pane").forEach((p) => {
@@ -197,9 +195,14 @@ function bindUI() {
   });
 }
 
-function updateModelHint() {
-  const m = state.modelsById[modelPicker.value];
-  modelHint.textContent = m ? m.description : "";
+function updateModelChip() {
+  const id = modelPicker.value;
+  const label = id === "auto" ? "auto" : id;
+  if (modelChip) {
+    const span = modelChip.querySelector(".chip-label");
+    if (span) span.textContent = label;
+    modelChip.title = (state.modelsById[id] && state.modelsById[id].description) || label;
+  }
 }
 
 function shorten(p) {
@@ -671,8 +674,9 @@ function addAssistantMessage(text) {
 function renderMessage(role, who, text) {
   const el = document.createElement("div");
   el.className = `msg ${role}`;
+  const avatar = role === "user" ? "U" : (state.persona === "veronica" ? "V" : "J");
   el.innerHTML = `
-    <div class="avatar">${role === "user" ? "U" : "M"}</div>
+    <div class="avatar">${avatar}</div>
     <div class="bubble">
       <div class="who">${who}</div>
       <div class="body">${renderMarkdown(text)}</div>
