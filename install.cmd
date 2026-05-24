@@ -72,8 +72,9 @@ if defined CURRENT_KEY (
 
 echo.
 echo ▸ Starting server...
-start "" cmd /c "cd /d "%APP_DIR%" && uv run mla --open"
+echo   (a new window will open — leave it running)
+start "MLA Server" cmd /k "cd /d "%APP_DIR%" && uv run mla --open"
 echo.
 echo   Done! Browser should open at http://127.0.0.1:8000
+echo   The server window is running in the background.
 echo.
-pause
