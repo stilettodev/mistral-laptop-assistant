@@ -1118,6 +1118,83 @@ def forget(key: str) -> dict[str, Any]:
 # Registry – mapped automatically into Mistral function schemas
 # ---------------------------------------------------------------------------
 
+# Define git functions first so they can be referenced in the TOOLS dict below.
+def _git_status(directory: str = ".") -> dict[str, Any]:
+    """Return the output of ``git status`` in the given directory."""
+    try:
+        cwd = _resolve_path(directory)
+        out = subprocess.run(
+            ["git", "status"], cwd=str(cwd), capture_output=True, text=True
+        )
+        return _result(out.returncode == 0, directory=str(cwd), output=out.stdout + out.stderr)
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def _git_log(directory: str = ".", limit: int = 10) -> dict[str, Any]:
+    """Return the last ``limit`` commits as a list of (hash, message, author)."""
+    try:
+        cwd = _resolve_path(directory)
+        proc = subprocess.run(
+            ["git", "log", f"--format=%H|%s|%an", f"-{limit}"],
+            cwd=str(cwd), capture_output=True, text=True,
+        )
+        commits = []
+        for line in proc.stdout.strip().splitlines():
+            parts = line.split("|", 2)
+            if len(parts) == 3:
+                commits.append({"hash": parts[0][:7], "message": parts[1], "author": parts[2]})
+        return _result(True, directory=str(cwd), commits=commits, count=len(commits))
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def _git_branch(directory: str = ".") -> dict[str, Any]:
+    """List all local and remote branches."""
+    try:
+        cwd = _resolve_path(directory)
+        proc = subprocess.run(
+            ["git", "branch", "-a"], cwd=str(cwd), capture_output=True, text=True
+        )
+        branches = [b.strip() for b in proc.stdout.strip().splitlines() if b.strip()]
+        current = next((b.lstrip("* ").strip() for b in branches if b.startswith("* ")), "")
+        return _result(True, directory=str(cwd), branches=branches, current=current, count=len(branches))
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+def _git_diff(directory: str = ".", target: str = "") -> dict[str, Any]:
+    """Show unstaged changes (``git diff``). Pass a commit hash to compare against it."""
+    try:
+        cwd = _resolve_path(directory)
+        args = ["git", "diff"] + ([target] if target else [])
+        proc = subprocess.run(args, cwd=str(cwd), capture_output=True, text=True)
+        return _result(
+            proc.returncode in (0, 1),
+            directory=str(cwd),
+            output=_truncate(proc.stdout + proc.stderr, 5000),
+            has_changes=bool(proc.stdout.strip()),
+        )
+    except Exception as exc:
+        return _result(False, error=str(exc))
+
+
+# Public aliases with underscore prefix to avoid collision with git commands.
+def git_status(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    return _git_status(*args, **kwargs)
+
+
+def git_log(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    return _git_log(*args, **kwargs)
+
+
+def git_branch(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    return _git_branch(*args, **kwargs)
+
+
+def git_diff(*args: Any, **kwargs: Any) -> dict[str, Any]:
+    return _git_diff(*args, **kwargs)
+
 
 TOOLS: dict[str, Any] = {
     fn.__name__: fn
@@ -1189,6 +1266,11 @@ TOOLS: dict[str, Any] = {
         list_bookmarks,
         open_bookmark,
         delete_bookmark,
+        # Git utilities
+        git_status,
+        git_log,
+        git_branch,
+        git_diff,
     ]
 }
 
