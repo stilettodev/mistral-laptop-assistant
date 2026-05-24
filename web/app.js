@@ -965,6 +965,7 @@ function renderToolCall(data) {
   card.dataset.callId = data.id;
   card.innerHTML = `
     <div class="tool-head">
+      <div class="tool-agent">${personaLetter(data.speaker || state.persona)}</div>
       <div class="tool-name"><span class="fn">${escapeHtml(data.name)}</span>(<span class="args-inline">${escapeHtml(inlineArgs(data.arguments))}</span>)</div>
       <div class="tool-status">running…</div>
     </div>

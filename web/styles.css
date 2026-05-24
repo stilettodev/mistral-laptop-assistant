@@ -723,6 +723,21 @@ body {
   user-select: none;
   gap: 12px;
 }
+.tool-agent {
+  font-size: 10px;
+  font-weight: 700;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  border: 1.5px solid var(--line);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  letter-spacing: 0;
+}
 .tool-card.denied .tool-head {
   background: linear-gradient(90deg, rgba(255, 82, 99, 0.08) 0%, transparent 100%);
 }
