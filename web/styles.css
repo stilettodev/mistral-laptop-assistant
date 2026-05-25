@@ -634,34 +634,56 @@ body {
 
 .msg .avatar {
   flex-shrink: 0;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
   display: grid;
   place-items: center;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 16px;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.02em;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  transition: transform 0.2s ease;
 }
 .msg.user .avatar {
   background: var(--surface-2);
   color: var(--text-dim);
   border: 1px solid var(--line);
+  font-size: 14px;
 }
 .msg.assistant .avatar {
   background: var(--accent);
   color: #1a120c;
 }
 
+/* Persona-specific avatar colors */
+.msg[data-persona="jarvis"] .avatar,
+body[data-persona="jarvis"] .msg.assistant .avatar {
+  background: linear-gradient(135deg, #ff7a3c 0%, #ff9a5c 100%);
+  color: #1a120c;
+}
+.msg[data-persona="veronica"] .avatar,
+body[data-persona="veronica"] .msg.assistant .avatar {
+  background: linear-gradient(135deg, #4ad6b3 0%, #7ae8cc 100%);
+  color: #0a2820;
+}
+.msg[data-persona="friday"] .avatar,
+body[data-persona="friday"] .msg.assistant .avatar {
+  background: linear-gradient(135deg, #7c6fff 0%, #a59dff 100%);
+  color: #1a1430;
+}
+
 .msg .bubble { flex: 1; min-width: 0; }
 .msg .who {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
   color: var(--text-mute);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .msg .body {
   font-size: 14.5px;
@@ -1127,6 +1149,8 @@ body {
 .trace-item.model { border-left: 3px solid var(--warn); }
 .trace-item.error { border-left: 3px solid var(--danger); }
 .trace-item.fallback { border-left: 3px solid #9b6dff; background: rgba(155, 109, 255, 0.05); }
+.trace-item.key_rotate { border-left: 3px solid #00b4d8; background: rgba(0, 180, 216, 0.05); }
+.trace-item.persona { border-left: 3px solid var(--accent); background: rgba(255, 122, 60, 0.03); }
 .trace-meta {
   display: flex;
   align-items: center;
@@ -1147,6 +1171,13 @@ body {
 .trace-badge.model { background: rgba(255,203,71,0.2); color: var(--warn); }
 .trace-badge.error { background: rgba(255,82,99,0.2); color: var(--danger); }
 .trace-badge.fallback { background: rgba(155,109,255,0.2); color: #9b6dff; }
+.trace-badge.key_rotate { background: rgba(0,180,216,0.2); color: #00b4d8; }
+.trace-speaker {
+  background: rgba(255,255,255,0.05);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 9px;
+}
 .trace-time { margin-left: auto; }
 .trace-content {
   color: var(--text-dim);

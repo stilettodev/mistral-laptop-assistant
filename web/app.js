@@ -793,7 +793,7 @@ async function runRequest(payload, extraConfirmations = {}) {
           if (state.thinkingVisible) {
             $("thinkingBar").textContent = evt.data;
           }
-          addTrace("thinking", evt.data, { speaker: evt.speaker });
+          addTrace("thinking", evt.data, { speaker: evt.speaker, model: evt.model });
           if (currentAssistant) {
             currentAssistant.querySelector(".body").innerHTML =
               `<span class="typing">${escapeHtml(evt.data)}</span>`;
@@ -809,12 +809,14 @@ async function runRequest(payload, extraConfirmations = {}) {
             currentAssistant.querySelector(".body").innerHTML = renderMarkdown(streamText);
             lastFinal = streamText;
             if (evt.speaker) {
-              currentAssistant.querySelector(".avatar").textContent = personaLetter(evt.speaker);
+              currentAssistant.querySelector(".avatar").textContent = personaIcon(evt.speaker);
+              currentAssistant.querySelector(".who").textContent = personaName(evt.speaker);
             }
           } else {
-            currentAssistant = addAssistantMessage(streamText);
+            currentAssistant = addAssistantMessage(streamText, evt.speaker || null);
             if (evt.speaker) {
-              currentAssistant.querySelector(".avatar").textContent = personaLetter(evt.speaker);
+              currentAssistant.querySelector(".avatar").textContent = personaIcon(evt.speaker);
+              currentAssistant.querySelector(".who").textContent = personaName(evt.speaker);
             }
           }
           break;
@@ -872,12 +874,14 @@ async function runRequest(payload, extraConfirmations = {}) {
             currentAssistant.querySelector(".body").innerHTML = renderMarkdown(streamText);
             lastFinal = streamText;
             if (evt.speaker) {
-              currentAssistant.querySelector(".avatar").textContent = personaLetter(evt.speaker);
+              currentAssistant.querySelector(".avatar").textContent = personaIcon(evt.speaker);
+              currentAssistant.querySelector(".who").textContent = personaName(evt.speaker);
             }
           } else {
-            currentAssistant = addAssistantMessage(streamText);
+            currentAssistant = addAssistantMessage(streamText, evt.speaker || null);
             if (evt.speaker) {
-              currentAssistant.querySelector(".avatar").textContent = personaLetter(evt.speaker);
+              currentAssistant.querySelector(".avatar").textContent = personaIcon(evt.speaker);
+              currentAssistant.querySelector(".who").textContent = personaName(evt.speaker);
             }
           }
           break;
@@ -892,7 +896,7 @@ async function runRequest(payload, extraConfirmations = {}) {
           break;
 
         case "fallback":
-          addTrace("fallback", evt.data, { model: evt.model });
+          addTrace("fallback", evt.data, { model: evt.model, speaker: evt.speaker });
           break;
 
         case "done":
@@ -937,16 +941,20 @@ function cleanup() {
 function parseEvent(block) {
   const lines = block.split("\n");
   let evt = "message";
+  let speaker = null;
+  let model = null;
   const dataLines = [];
   for (const l of lines) {
     if (l.startsWith("event:")) evt = l.slice(6).trim();
+    else if (l.startsWith("speaker:")) speaker = l.slice(8).trim();
+    else if (l.startsWith("model:")) model = l.slice(6).trim();
     else if (l.startsWith("data:")) dataLines.push(l.slice(5).trim());
   }
   if (!dataLines.length) return null;
   const raw = dataLines.join("\n");
   let data;
   try { data = JSON.parse(raw); } catch { data = raw; }
-  return { event: evt, data };
+  return { event: evt, data, speaker, model };
 }
 
 // ── Trace / Thinking Log ─────────────────────────────────────────────
@@ -968,12 +976,30 @@ function addTrace(type, content, meta = {}) {
   const li = document.createElement("li");
   li.className = `trace-item ${type}`;
   const timeStr = new Date(entry.time).toLocaleTimeString();
-  const badge = type === "fallback" ? "FALLBACK" : type.toUpperCase();
+  
+  // Badge text based on type
+  const badgeTexts = {
+    thinking: "THINK",
+    tool: "TOOL",
+    model: "MODEL",
+    error: "ERROR",
+    fallback: "FALLBACK",
+    key_rotate: "KEY ↻",
+    persona: "PERSONA",
+  };
+  const badge = badgeTexts[type] || type.toUpperCase();
+  
+  // Speaker/persona indicator
+  const speakerHtml = meta.speaker 
+    ? `<span class="trace-speaker">${personaIcon(meta.speaker)} ${personaName(meta.speaker)}</span>` 
+    : "";
+  
   li.innerHTML = `
     <div class="trace-meta">
       <span class="trace-badge ${type}">${badge}</span>
-      ${meta.model ? `<span class="trace-model">${escapeHtml(meta.model)}</span>` : ""}
-      ${meta.tool ? `<span class="trace-tool">${escapeHtml(meta.tool)}</span>` : ""}
+      ${speakerHtml}
+      ${meta.model ? `<span class="trace-model">📊 ${escapeHtml(meta.model)}</span>` : ""}
+      ${meta.tool ? `<span class="trace-tool">⚙ ${escapeHtml(meta.tool)}</span>` : ""}
       <span class="trace-time">${timeStr}</span>
     </div>
     <div class="trace-content">${escapeHtml(content)}</div>`;
@@ -1007,21 +1033,26 @@ function addUserMessage(text, images = []) {
   return el;
 }
 
-function addAssistantMessage(text) {
-  const el = renderMessage("assistant", "mla", text);
+function addAssistantMessage(text, speaker = null) {
+  const el = renderMessage("assistant", "mla", text, speaker);
   thread.appendChild(el);
   scrollDown();
   return el;
 }
 
-function renderMessage(role, who, text) {
+function renderMessage(role, who, text, speaker = null) {
   const el = document.createElement("div");
   el.className = `msg ${role}`;
-  const avatar = role === "user" ? "U" : personaLetter(state.persona);
+  
+  // Determine the effective persona (speaker takes precedence)
+  const effectivePersona = speaker || (role === "user" ? null : state.persona);
+  const avatar = role === "user" ? "👤" : (effectivePersona ? personaIcon(effectivePersona) : "🤖");
+  const displayName = role === "user" ? "You" : (effectivePersona ? personaName(effectivePersona) : "MLA");
+  
   el.innerHTML = `
     <div class="avatar">${avatar}</div>
     <div class="bubble">
-      <div class="who">${who}</div>
+      <div class="who">${displayName}</div>
       <div class="body">${renderMarkdown(text)}</div>
     </div>`;
   return el;
@@ -1033,13 +1064,26 @@ function personaLetter(persona) {
   return "J";
 }
 
+function personaName(persona) {
+  if (persona === "veronica") return "Veronica";
+  if (persona === "friday")   return "Friday";
+  return "Jarvis";
+}
+
+function personaIcon(persona) {
+  if (persona === "veronica") return "🔬";
+  if (persona === "friday")   return "🛠️";
+  return "☕";
+}
+
 function renderToolCall(data) {
   const card = document.createElement("div");
   card.className = "tool-card";
   card.dataset.callId = data.id;
+  const speaker = data.speaker || state.persona;
   card.innerHTML = `
     <div class="tool-head">
-      <div class="tool-agent">${personaLetter(data.speaker || state.persona)}</div>
+      <div class="tool-agent">${personaIcon(speaker)}</div>
       <div class="tool-name"><span class="fn">${escapeHtml(data.name)}</span>(<span class="args-inline">${escapeHtml(inlineArgs(data.arguments))}</span>)</div>
       <div class="tool-status">running…</div>
     </div>

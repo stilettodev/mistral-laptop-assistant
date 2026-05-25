@@ -246,7 +246,10 @@ async def chat(payload: ChatRequest, request: Request) -> StreamingResponse:
                 if await request.is_disconnected():
                     log.info("client disconnected, aborting agent loop for %s", cid)
                     break
-                yield _sse(event["type"], event["data"])
+                # Pass speaker and model through to the UI for trace display
+                speaker = event.get("speaker")
+                model = event.get("model")
+                yield _sse(event["type"], event["data"], speaker=speaker, model=model)
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -377,9 +380,14 @@ def delete_memory(key: str) -> dict[str, bool]:
 # ── helpers ─────────────────────────────────────────────────────────────
 
 
-def _sse(event: str, data: object) -> str:
+def _sse(event: str, data: object, speaker: str | None = None, model: str | None = None) -> str:
     payload = data if isinstance(data, str) else json.dumps(data, default=str)
-    return f"event: {event}\ndata: {payload}\n\n"
+    extra = ""
+    if speaker:
+        extra += f"\nspeaker: {speaker}"
+    if model:
+        extra += f"\nmodel: {model}"
+    return f"event: {event}{extra}\ndata: {payload}\n\n"
 
 
 # ── static UI ───────────────────────────────────────────────────────────

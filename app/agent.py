@@ -375,7 +375,7 @@ async def run_agent(
                     next_key = mc.rotate()
                     if next_key:
                         yield {"type": "status", "data": f"Key rate-limited — switching to next key…"}
-                        yield {"type": "fallback", "data": f"Key rotated: {mc.current_key[:6]}…", "model": mc.current_key[:6]}
+                        yield {"type": "key_rotate", "data": f"API key rotated to {mc.current_key[:6]}…", "model": mc.current_key[:6], "speaker": persona}
                         audit("key_rotate", {"cid": conversation_id, "from": mc.current_key[:6]})
                         continue
                 audit("chat_error", {"cid": conversation_id, "err": str(exc)})
