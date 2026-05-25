@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -60,7 +61,7 @@ def test_run_shell_reports_failure() -> None:
 
 
 def test_run_shell_timeout() -> None:
-    res = tools.run_shell(command="sleep 5", timeout=1)
+    res = tools.run_shell(command=f'"{sys.executable}" -c "import time; time.sleep(5)"', timeout=1)
     assert res["ok"] is False
     assert "timeout" in res["error"]
 
@@ -429,9 +430,7 @@ def test_capabilities_endpoint(client: TestClient) -> None:
 
 def test_chat_without_api_key_returns_400(client: TestClient) -> None:
     resp = client.post("/api/chat", json={"message": "hello"})
-    # The endpoint returns 200 (SSE); the agent will yield an error event
-    # inside the stream when no API keys are available.
-    assert resp.status_code == 200
+    assert resp.status_code == 400
 
 
 def test_upload_image_returns_data_url(client: TestClient) -> None:
