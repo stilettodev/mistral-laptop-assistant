@@ -43,6 +43,10 @@ Operating rules:
    goal is fully achieved.
  * After EACH tool result, ALWAYS respond with a brief summary of what
    the tool returned before calling the next tool (or concluding).
+ * When you call open_url, ALWAYS read the "content" field in the result
+   — it contains the full text of the page. Summarize what you read.
+ * When you call web_search, read the snippets and then decide if you
+   need to open any URLs with open_url to get full details.
  * For destructive operations the user may be prompted to confirm.
    If a confirmation is denied, stop and explain.
  * NEVER fabricate results. If a tool fails, surface the real error.
