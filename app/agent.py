@@ -140,28 +140,27 @@ def _serialize_messages(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 _FINISH_GUIDANCE = (
-    " The tool result above contains data. Output ONLY the data in this format:\n"
-    "For web_search results: list each as '- <title>: <url>'\n"
-    "For command output: paste the raw output lines (no formatting)\n"
-    "For other tools: state the key fields and values.\n\n"
-    "Write ONLY the output. No intro, no summary, no apology, no analysis."
+    " The tool result below contains data from running a command.\n"
+    "Your task: Summarize the results in plain English for the user.\n"
+    "Include the actual values from the output (e.g., speeds, names, sizes).\n"
+    "Be concise and helpful."
 )
 
 
 _TOOL_GUIDANCE: dict[str, str] = {
     "web_search": (
-        " Output every web search result as one markdown list item:\n"
-        "- <title>: <url>\n"
-        "Extract title and url from the tool result. Write ONLY the list. "
-        "No intro, no apology, no analysis. Start with '-'."
+        " The search results are below. Format them as a clean list:\n"
+        "- <title>: <brief description> (<url>)\n"
+        "Be concise and helpful."
     ),
     "run_shell": (
-        " Paste the raw command output exactly as it appears. "
-        "No formatting, no summary, no apology. Write ONLY the output lines."
+        " The command output is below. Summarize the key results for the user.\n"
+        "Include actual values like speeds, sizes, names from the output.\n"
+        "Be helpful and concise."
     ),
     "system_info": (
-        " State the key system values. "
-        "Format as: 'key: value' per line. No intro, no apology."
+        " The system info is below. Summarize the key values for the user.\n"
+        "Include actual values from the output."
     ),
 }
 
