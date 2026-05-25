@@ -169,7 +169,7 @@ async def _synthesise_and_stream(
     mc: Any,
     persona: str,
     tool_name: str | None = None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str, str | None]:
     """After tool batch: add guidance message, stream the model's final answer.
 
     Returns (events, tool_calls, speaker). Events include 'message' delta chunks
@@ -193,7 +193,7 @@ async def _synthesise_and_stream(
     except Exception as exc:
         log.warning("synthesis call failed: %s", exc)
         history.pop()
-        return [], [], persona
+        return [], [], persona, f"synthesis call failed: {exc}"
 
     history.pop()  # remove guidance — only keep real model output
 
@@ -212,11 +212,11 @@ async def _synthesise_and_stream(
             for tc in raw_tc
         ]
         history.append({"role": "assistant", "content": buffer, "tool_calls": tool_calls_out})
-        return events, tool_calls_out, persona
+        return events, tool_calls_out, persona, None
     else:
         history.append({"role": "assistant", "content": buffer})
         events.append({"type": "final", "data": buffer, "speaker": persona})
-        return events, [], persona
+        return events, [], persona, None
 
 
 # ---------------------------------------------------------------------------
@@ -511,9 +511,14 @@ async def run_agent(
             # the model's final answer. This does NOT charge a step.
             if not needs_confirm:
                 last_tool = approved[-1]["name"] if approved else None
-                syn_events, new_tc, _ = await _synthesise_and_stream(
+                syn_events, new_tc, _, syn_error = await _synthesise_and_stream(
                     model, tools_schema, history, mc, persona, tool_name=last_tool
                 )
+                if syn_error:
+                    audit("chat_error", {"cid": conversation_id, "err": syn_error})
+                    yield {"type": "error", "data": f"Mistral API error: {syn_error}"}
+                    CONVERSATIONS.persist(conversation_id)
+                    return
                 for ev in syn_events:
                     yield ev
                 if new_tc:

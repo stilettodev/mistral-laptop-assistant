@@ -758,6 +758,8 @@ async function runRequest(payload, extraConfirmations = {}) {
   let buffer = "";
   let currentAssistant = null;  // null until first text event — tool cards go first
   let lastFinal = "";
+  let toolActivity = false;
+  let streamText = "";
 
   while (true) {
     const { value, done } = await reader.read();
@@ -797,14 +799,15 @@ async function runRequest(payload, extraConfirmations = {}) {
           if (state.thinkingVisible) {
             $("thinkingBar").textContent = "";
           }
+          streamText += String(evt.data || "");
           if (currentAssistant) {
-            currentAssistant.querySelector(".body").innerHTML = renderMarkdown(evt.data);
-            lastFinal = evt.data;
+            currentAssistant.querySelector(".body").innerHTML = renderMarkdown(streamText);
+            lastFinal = streamText;
             if (evt.speaker) {
               currentAssistant.querySelector(".avatar").textContent = personaLetter(evt.speaker);
             }
           } else {
-            currentAssistant = addAssistantMessage(evt.data);
+            currentAssistant = addAssistantMessage(streamText);
             if (evt.speaker) {
               currentAssistant.querySelector(".avatar").textContent = personaLetter(evt.speaker);
             }
@@ -812,6 +815,7 @@ async function runRequest(payload, extraConfirmations = {}) {
           break;
 
         case "tool_call":
+          toolActivity = true;
           if (state.thinkingVisible) {
             $("thinkingBar").textContent = `⚙ ${evt.data.name}(${JSON.stringify(evt.data.arguments)})`;
           }
@@ -823,6 +827,7 @@ async function runRequest(payload, extraConfirmations = {}) {
           break;
 
         case "tool_result":
+          toolActivity = true;
           if (state.thinkingVisible) {
             $("thinkingBar").textContent = "processing…";
           }
@@ -848,14 +853,15 @@ async function runRequest(payload, extraConfirmations = {}) {
           if (state.thinkingVisible) {
             $("thinkingBar").textContent = "";
           }
+          streamText = String(evt.data || streamText || "");
           if (currentAssistant) {
-            currentAssistant.querySelector(".body").innerHTML = renderMarkdown(evt.data);
-            lastFinal = evt.data;
+            currentAssistant.querySelector(".body").innerHTML = renderMarkdown(streamText);
+            lastFinal = streamText;
             if (evt.speaker) {
               currentAssistant.querySelector(".avatar").textContent = personaLetter(evt.speaker);
             }
           } else {
-            currentAssistant = addAssistantMessage(evt.data);
+            currentAssistant = addAssistantMessage(streamText);
             if (evt.speaker) {
               currentAssistant.querySelector(".avatar").textContent = personaLetter(evt.speaker);
             }
@@ -877,6 +883,15 @@ async function runRequest(payload, extraConfirmations = {}) {
           break;
       }
       scrollDown();
+    }
+  }
+
+  if (toolActivity && !lastFinal) {
+    const fallback = "Tool execution finished, but no summary text was returned. Please retry the request.";
+    if (currentAssistant) {
+      currentAssistant.querySelector(".body").innerHTML = renderMarkdown(fallback);
+    } else {
+      addAssistantMessage(fallback);
     }
   }
 
