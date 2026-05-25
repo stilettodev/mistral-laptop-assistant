@@ -191,16 +191,27 @@ async def _synthesise_and_stream(
             last_tool_result = msg.get("content", "")
             break
     
+    log.warning(f"[SYNTHESIS] tool_name={tool_name}, has_result={last_tool_result is not None}")
+    if last_tool_result:
+        preview = last_tool_result[:300].replace('\n', '\\n')
+        log.warning(f"[SYNTHESIS] Tool result: {preview}...")
+    
     # Build guidance with tool result if available
-    guidance = (_TOOL_GUIDANCE.get(tool_name, "") or _FINISH_GUIDANCE) if tool_name else _FINISH_GUIDANCE
+    tool_guidance = _TOOL_GUIDANCE.get(tool_name, "") if tool_name else ""
+    guidance = tool_guidance if tool_guidance else _FINISH_GUIDANCE
+    
     if last_tool_result:
         guidance = f"Tool result:\n{last_tool_result}\n\n{guidance}"
     
+    log.warning(f"[SYNTHESIS] Final guidance: {guidance[:200]}...")
+    
     history.append({"role": "user", "content": guidance})
     try:
+        serialized = _serialize_messages(history)
+        log.warning(f"[SYNTHESIS] Sending {len(serialized)} messages to model")
         stream = mc.client().chat.complete(
             model=model,
-            messages=_serialize_messages(history),
+            messages=serialized,
             tools=tools_schema,
             tool_choice="auto",
             temperature=0.0,
@@ -222,6 +233,8 @@ async def _synthesise_and_stream(
             events.append({"type": "message", "data": delta, "speaker": persona})
         raw_tc = getattr(event.choices[0].delta, "tool_calls", None) or raw_tc
 
+    log.warning(f"[SYNTHESIS] Response buffer: {buffer[:200] if buffer else '(empty)'}...")
+    
     if raw_tc:
         tool_calls_out = [
             {"id": tc.id, "name": tc.function.name, "arguments": json.loads(tc.function.arguments)}
