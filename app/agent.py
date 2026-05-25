@@ -338,6 +338,7 @@ async def run_agent(
         else:
             step += 1
             yield {"type": "status", "data": f"Thinking with {model} (step {step})…"}
+            yield {"type": "model", "data": f"Using {model}", "model": model}
             try:
                 response = await asyncio.to_thread(
                     mc.client().chat.complete,
@@ -373,6 +374,8 @@ async def run_agent(
                 if any(x in err_str for x in ["401", "unauthorized", "403", "forbidden", "429", "rate limit", "quota"]):
                     next_key = mc.rotate()
                     if next_key:
+                        yield {"type": "status", "data": f"Key rate-limited — switching to next key…"}
+                        yield {"type": "fallback", "data": f"Key rotated: {mc.current_key[:6]}…", "model": mc.current_key[:6]}
                         audit("key_rotate", {"cid": conversation_id, "from": mc.current_key[:6]})
                         continue
                 audit("chat_error", {"cid": conversation_id, "err": str(exc)})

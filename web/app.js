@@ -39,6 +39,7 @@ const state = {
   recording: false,
   audioPlayer: null,
   thinkingVisible: true,    // show status events in #thinkingBar
+  traceLog: [],             // thinking trace entries
 };
 
 // ── Boot ─────────────────────────────────────────────────────────────
@@ -160,6 +161,9 @@ function bindUI() {
       $("thinkingBar").textContent = "";
     }
   });
+
+  // Clear trace button
+  $("clearTrace").addEventListener("click", clearTrace);
 
   // Stop button — aborts the in-flight SSE request
   stopBtn.addEventListener("click", () => {
@@ -789,6 +793,7 @@ async function runRequest(payload, extraConfirmations = {}) {
           if (state.thinkingVisible) {
             $("thinkingBar").textContent = evt.data;
           }
+          addTrace("thinking", evt.data, { speaker: evt.speaker });
           if (currentAssistant) {
             currentAssistant.querySelector(".body").innerHTML =
               `<span class="typing">${escapeHtml(evt.data)}</span>`;
@@ -819,6 +824,7 @@ async function runRequest(payload, extraConfirmations = {}) {
           if (state.thinkingVisible) {
             $("thinkingBar").textContent = `⚙ ${evt.data.name}(${JSON.stringify(evt.data.arguments)})`;
           }
+          addTrace("tool", `${evt.data.name}(${inlineArgs(evt.data.arguments)})`, { tool: evt.data.name });
           if (currentAssistant && !currentAssistant.classList.contains("tool-card")) {
             currentAssistant.remove();
           }
@@ -831,6 +837,14 @@ async function runRequest(payload, extraConfirmations = {}) {
           if (state.thinkingVisible) {
             $("thinkingBar").textContent = "processing…";
           }
+          const resultOk = evt.data.result && evt.data.result.ok;
+          const resultType = evt.data.denied ? "error" : resultOk ? "tool" : "error";
+          const resultSummary = evt.data.denied
+            ? `${evt.data.name} denied`
+            : resultOk
+            ? `${evt.data.name} → ok`
+            : `${evt.data.name} → error`;
+          addTrace(resultType, resultSummary, { tool: evt.data.name });
           updateToolResult(evt.data);
           // Show a "processing result…" bubble while we wait for synthesis.
           if (!currentAssistant) {
@@ -870,10 +884,15 @@ async function runRequest(payload, extraConfirmations = {}) {
 
         case "error":
           showError(typeof evt.data === "string" ? evt.data : JSON.stringify(evt.data));
+          addTrace("error", typeof evt.data === "string" ? evt.data : JSON.stringify(evt.data));
           if (currentAssistant) {
             currentAssistant.remove();
             currentAssistant = null;
           }
+          break;
+
+        case "fallback":
+          addTrace("fallback", evt.data, { model: evt.model });
           break;
 
         case "done":
@@ -928,6 +947,46 @@ function parseEvent(block) {
   let data;
   try { data = JSON.parse(raw); } catch { data = raw; }
   return { event: evt, data };
+}
+
+// ── Trace / Thinking Log ─────────────────────────────────────────────
+
+function addTrace(type, content, meta = {}) {
+  const entry = {
+    type,
+    content,
+    time: Date.now(),
+    ...meta,
+  };
+  state.traceLog.push(entry);
+
+  // Update the Trace tab if visible
+  const traceList = $("traceList");
+  const traceEmpty = $("traceEmpty");
+  if (traceEmpty) traceEmpty.style.display = "none";
+
+  const li = document.createElement("li");
+  li.className = `trace-item ${type}`;
+  const timeStr = new Date(entry.time).toLocaleTimeString();
+  const badge = type === "fallback" ? "FALLBACK" : type.toUpperCase();
+  li.innerHTML = `
+    <div class="trace-meta">
+      <span class="trace-badge ${type}">${badge}</span>
+      ${meta.model ? `<span class="trace-model">${escapeHtml(meta.model)}</span>` : ""}
+      ${meta.tool ? `<span class="trace-tool">${escapeHtml(meta.tool)}</span>` : ""}
+      <span class="trace-time">${timeStr}</span>
+    </div>
+    <div class="trace-content">${escapeHtml(content)}</div>`;
+  traceList.appendChild(li);
+  traceList.scrollTop = traceList.scrollHeight;
+}
+
+function clearTrace() {
+  state.traceLog = [];
+  const traceList = $("traceList");
+  if (traceList) traceList.innerHTML = "";
+  const traceEmpty = $("traceEmpty");
+  if (traceEmpty) traceEmpty.style.display = "";
 }
 
 // ── Rendering helpers ────────────────────────────────────────────────

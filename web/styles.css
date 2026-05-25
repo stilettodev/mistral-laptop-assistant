@@ -210,11 +210,11 @@ body {
 .btn-new-chat:hover { transform: translateY(-1px); }
 .btn-new-chat:active { transform: translateY(0); }
 
-/* Section nav (Chat / History / Jobs / Memory) */
+/* Section nav (Chat / Trace / History / Jobs / Memory) */
 
 .section-nav {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 2px;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -1069,6 +1069,91 @@ body {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 10px;
+}
+
+/* ── Trace tab ────────────────────────────────────────────────────── */
+
+.trace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 8px 0;
+}
+.trace-title {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+.trace-clear-btn {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--text-mute);
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.trace-clear-btn:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.trace-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.trace-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.trace-item.thinking { border-left: 3px solid var(--accent); }
+.trace-item.tool { border-left: 3px solid var(--ok); }
+.trace-item.model { border-left: 3px solid var(--warn); }
+.trace-item.error { border-left: 3px solid var(--danger); }
+.trace-item.fallback { border-left: 3px solid #9b6dff; background: rgba(155, 109, 255, 0.05); }
+.trace-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--text-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.trace-badge {
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+}
+.trace-badge.thinking { background: rgba(255,122,60,0.2); color: var(--accent); }
+.trace-badge.tool { background: rgba(107,217,104,0.2); color: var(--ok); }
+.trace-badge.model { background: rgba(255,203,71,0.2); color: var(--warn); }
+.trace-badge.error { background: rgba(255,82,99,0.2); color: var(--danger); }
+.trace-badge.fallback { background: rgba(155,109,255,0.2); color: #9b6dff; }
+.trace-time { margin-left: auto; }
+.trace-content {
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .settings-head {
   display: flex;

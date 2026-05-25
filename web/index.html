@@ -53,6 +53,7 @@
       <!-- Section nav -->
       <nav class="section-nav">
         <button class="nav-btn active" data-tab="chat">Chat</button>
+        <button class="nav-btn" data-tab="thinking">Trace</button>
         <button class="nav-btn" data-tab="history">History</button>
         <button class="nav-btn" data-tab="jobs">Jobs</button>
         <button class="nav-btn" data-tab="memory">Memory</button>
@@ -111,6 +112,16 @@
       <!-- History tab -->
       <section class="tab-pane hidden" data-pane="history">
         <ul id="historyList" class="item-list"></ul>
+      </section>
+
+      <!-- Trace tab -->
+      <section class="tab-pane hidden" data-pane="thinking">
+        <div class="trace-header">
+          <span class="trace-title">Thinking Trace</span>
+          <button id="clearTrace" class="trace-clear-btn">Clear</button>
+        </div>
+        <ul id="traceList" class="trace-list"></ul>
+        <p class="hint-text" id="traceEmpty">Thinking events will appear here during conversations.</p>
       </section>
 
       <!-- Jobs tab -->
