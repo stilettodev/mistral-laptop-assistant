@@ -183,7 +183,19 @@ async def _synthesise_and_stream(
     This does NOT charge a step.
     """
     events: list[dict[str, Any]] = []
+    
+    # Get the last tool result to include in guidance
+    last_tool_result = None
+    for msg in reversed(history):
+        if msg["role"] == "tool":
+            last_tool_result = msg.get("content", "")
+            break
+    
+    # Build guidance with tool result if available
     guidance = (_TOOL_GUIDANCE.get(tool_name, "") or _FINISH_GUIDANCE) if tool_name else _FINISH_GUIDANCE
+    if last_tool_result:
+        guidance = f"Tool result:\n{last_tool_result}\n\n{guidance}"
+    
     history.append({"role": "user", "content": guidance})
     try:
         stream = mc.client().chat.complete(
