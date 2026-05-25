@@ -286,12 +286,13 @@ def open_app(name: str) -> dict[str, Any]:
         return _result(False, error=str(exc))
 
 
-def open_url(url: str) -> dict[str, Any]:
-    """Open a URL and retrieve its content for the agent.
+def open_url(url: str, extract_content: bool = True) -> dict[str, Any]:
+    """Open a URL in the browser and optionally retrieve its text content.
 
-    Uses Tavily's extract API (if configured) to pull the page content so
-    the agent can see what was retrieved rather than just opening a tab.
-    Falls back to opening the URL in the browser when no API key is set.
+    If extract_content is True (default), also fetches and returns the
+    page text so the agent can read what was retrieved. Uses Tavily's
+    extract API if TAVILY_API_KEY is set, otherwise falls back to
+    read_url.
     """
     if not url.startswith(("http://", "https://", "file://")):
         url = "https://" + url
@@ -299,7 +300,13 @@ def open_url(url: str) -> dict[str, Any]:
     # Open in browser regardless — user should see it.
     webbrowser.open(url, new=2)
 
-    # Try to retrieve content via Tavily so the model sees it.
+    if not extract_content:
+        return _result(True, url=url, opened=True, content=None)
+
+    # Try to retrieve content so the model sees what was fetched.
+    content = None
+
+    # Try Tavily first (better extraction).
     tavily_key = os.environ.get("TAVILY_API_KEY")
     if tavily_key:
         try:
@@ -316,12 +323,37 @@ def open_url(url: str) -> dict[str, Any]:
             results = data.get("results", [])
             if results and results[0].get("raw_content"):
                 content = results[0]["raw_content"]
-                # Truncate long pages so the message doesn't explode.
-                return _result(True, url=url, content=content[: 15_000] if len(content) > 15_000 else content)
-        except Exception:  # noqa: BLE001 — non-fatal; fall through to plain open
-            pass
+        except Exception:
+            pass  # Fall through to read_url fallback.
 
-    return _result(True, url=url)
+    # Fallback: basic HTTP fetch via read_url logic.
+    if content is None:
+        try:
+            import httpx
+
+            with httpx.Client(timeout=10.0, follow_redirects=True) as client:
+                resp = client.get(url)
+            if resp.status_code == 200 and "text/html" in resp.headers.get("content-type", ""):
+                # Strip HTML tags for plain text.
+                from bs4 import BeautifulSoup
+
+                soup = BeautifulSoup(resp.text, "html.parser")
+                # Remove script and style elements.
+                for tag in soup(["script", "style"]):
+                    tag.decompose()
+                content = soup.get_text(separator="\n", strip=True)
+                # Clean up excessive newlines.
+                import re
+
+                content = re.sub(r"\n{3,}", "\n\n", content)
+        except Exception:
+            pass  # Could not extract content.
+
+    # Truncate long content so the message doesn't explode.
+    if content:
+        content = content[: 15_000] if len(content) > 15_000 else content
+
+    return _result(True, url=url, opened=True, content=content)
 
 
 def notify(title: str, message: str = "") -> dict[str, Any]:
