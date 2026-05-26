@@ -537,9 +537,22 @@ async def run_agent(
                     "type": "tool_result",
                     "data": {"id": tc["id"], "name": tc["name"], "result": result},
                 }
+                
+                # Format tool result as a friendly message for the user
+                if result.get("ok"):
+                    # Format stdout or other useful output for the user
+                    output_text = ""
+                    if result.get("stdout"):
+                        output_text = result["stdout"].strip()
+                    elif result.get("returncode") == 0 and not output_text:
+                        output_text = "Done!"
+                    
+                    if output_text:
+                        yield {"type": "message", "data": output_text, "speaker": persona}
 
             # After batch execution, make the synthesis call so the user sees
             # the model's final answer. This does NOT charge a step.
+            # (Only if there was actual assistant text to synthesize)
             if not needs_confirm:
                 last_tool = approved[-1]["name"] if approved else None
                 syn_events, new_tc, _, syn_error = await _synthesise_and_stream(
