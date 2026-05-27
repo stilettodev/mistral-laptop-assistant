@@ -26,6 +26,15 @@
         </div>
       </div>
 
+      <!-- Agent switcher (new) -->
+      <div class="agent-switcher" id="agentSwitcher">
+        <div class="agent-header">
+          <span class="agent-title">Agents</span>
+          <button class="agent-refresh-btn" id="refreshAgents" title="Refresh agents">⟳</button>
+        </div>
+        <div class="agent-grid" id="agentGrid"></div>
+      </div>
+
       <!-- Persona switcher -->
       <div class="persona-switcher">
         <button class="persona-btn active" data-persona="jarvis" id="btnJarvis">
@@ -56,6 +65,7 @@
         <button class="nav-btn" data-tab="thinking">Trace</button>
         <button class="nav-btn" data-tab="history">History</button>
         <button class="nav-btn" data-tab="jobs">Jobs</button>
+        <button class="nav-btn" data-tab="connectors">Connectors</button>
         <button class="nav-btn" data-tab="memory">Memory</button>
         <button class="nav-btn" data-tab="settings">Settings</button>
       </nav>
@@ -128,6 +138,23 @@
       <section class="tab-pane hidden" data-pane="jobs">
         <ul id="jobsList" class="item-list"></ul>
         <p class="hint-text">Ask "every weekday at 9am run git pull" to schedule jobs.</p>
+      </section>
+
+      <!-- Connectors tab -->
+      <section class="tab-pane hidden" data-pane="connectors">
+        <div class="connectors-section">
+          <div class="connectors-header">
+            <span class="connectors-title">Connected Services</span>
+            <button class="connect-btn" id="addConnectorBtn">+ Add</button>
+          </div>
+          <ul id="connectedList" class="connected-list"></ul>
+          
+          <div class="connectors-divider">
+            <span>Available platforms</span>
+          </div>
+          
+          <div class="platforms-grid" id="platformsGrid"></div>
+        </div>
       </section>
 
       <!-- Memory tab -->

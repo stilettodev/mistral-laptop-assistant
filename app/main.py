@@ -37,6 +37,8 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .agent import CONVERSATIONS, chat_oneshot, run_agent
+from .agents import MANAGER as AGENT_MANAGER, AgentType
+from .connector_manager import CONNECTOR_MANAGER
 from .config import settings
 from .mistral_client import list_models
 from .scheduler import SCHEDULER
@@ -354,6 +356,90 @@ def toggle_job(job_id: str, enabled: bool) -> dict[str, bool]:
     if not ok:
         raise HTTPException(404, "job not found")
     return {"ok": True}
+
+
+# ── agents ─────────────────────────────────────────────────────────────────
+
+
+@app.get("/api/agents")
+def list_agents() -> dict[str, object]:
+    return {"agents": AGENT_MANAGER.list_agents()}
+
+
+@app.post("/api/agents/active")
+def set_active_agent(payload: dict[str, str]) -> dict[str, object]:
+    agent_type = payload.get("agent_type", "general")
+    try:
+        agent_enum = AgentType(agent_type.lower())
+    except ValueError:
+        raise HTTPException(400, f"Unknown agent type: {agent_type}")
+    conversation_id = payload.get("conversation_id", "")
+    return AGENT_MANAGER.set_active_agent(conversation_id, agent_enum)
+
+
+@app.get("/api/agents/active")
+def get_active_agent(conversation_id: str = "") -> dict[str, object]:
+    return AGENT_MANAGER.get_active_agent(conversation_id)
+
+
+# ── connectors ─────────────────────────────────────────────────────────────
+
+
+@app.get("/api/connectors")
+def list_connectors() -> dict[str, object]:
+    return {
+        "connectors": CONNECTOR_MANAGER.list_available_platforms(),
+        "connected_accounts": CONNECTOR_MANAGER.list_connected_accounts(),
+    }
+
+
+@app.post("/api/connectors")
+def add_connector(payload: dict[str, str]) -> dict[str, object]:
+    platform = payload.get("platform", "")
+    account_name = payload.get("account_name", "")
+    account_id = payload.get("account_id", "")
+    token = payload.get("token", payload.get("access_token", ""))
+    
+    if not platform or not account_name or not token:
+        raise HTTPException(400, "platform, account_name, and token are required")
+    
+    auth_data = {"access_token": token}
+    if platform == "telegram":
+        auth_data = {"bot_token": token}
+    elif platform == "discord":
+        auth_data = {"bot_token": token}
+    
+    return CONNECTOR_MANAGER.connect_account(platform, account_name, account_id, auth_data)
+
+
+@app.delete("/api/connectors/{account_id}")
+def remove_connector(account_id: str) -> dict[str, bool]:
+    result = CONNECTOR_MANAGER.disconnect_account(account_id)
+    if not result.get("ok"):
+        raise HTTPException(404, result.get("error", "account not found"))
+    return {"ok": True}
+
+
+@app.post("/api/connectors/post")
+async def post_to_connector(payload: dict[str, str]) -> dict[str, object]:
+    platform = payload.get("platform", "")
+    text = payload.get("text", "")
+    image_urls = payload.get("image_urls", "")
+    tags = payload.get("tags", "")
+    
+    if not platform:
+        raise HTTPException(400, "platform is required")
+    
+    return await CONNECTOR_MANAGER.post_to_platform(
+        platform, text,
+        image_urls=image_urls.split(",") if image_urls else [],
+        tags=tags.split(",") if tags else [],
+    )
+
+
+@app.get("/api/connectors/{platform}/info")
+async def get_connector_info(platform: str) -> dict[str, object]:
+    return await CONNECTOR_MANAGER.get_account_info(platform)
 
 
 # ── memory (long-term key/value) ───────────────────────────────────────

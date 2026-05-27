@@ -29,6 +29,7 @@ const state = {
   conversationId: crypto.randomUUID(),
   safety: "normal",
   persona: "jarvis",  // "jarvis" or "veronica"
+  activeAgent: "general",  // current agent type
   pendingConfirmations: null,
   busy: false,
   abortController: null,  // for cancelling in-flight SSE
@@ -40,12 +41,15 @@ const state = {
   audioPlayer: null,
   thinkingVisible: true,    // show status events in #thinkingBar
   traceLog: [],             // thinking trace entries
+  agents: [],               // available agents
+  connectors: [],           // available connectors
+  connectedAccounts: [],    // connected service accounts
 };
 
 // ── Boot ─────────────────────────────────────────────────────────────
 
 (async () => {
-  await Promise.all([loadStatus(), loadModels(), loadCapabilities()]);
+  await Promise.all([loadStatus(), loadModels(), loadCapabilities(), loadAgents(), loadConnectors()]);
   bindUI();
 })();
 
@@ -100,6 +104,198 @@ async function loadModels() {
   }
   modelPicker.value = "auto";
   updateModelChip();
+}
+
+async function loadAgents() {
+  try {
+    const { agents } = await (await fetch("/api/agents")).json();
+    state.agents = agents;
+    renderAgentGrid();
+  } catch { /* keep empty */ }
+}
+
+async function loadConnectors() {
+  try {
+    const { connectors, connected_accounts } = await (await fetch("/api/connectors")).json();
+    state.connectors = connectors;
+    state.connectedAccounts = connected_accounts || [];
+    renderPlatformsGrid();
+    renderConnectedList();
+  } catch { /* keep empty */ }
+}
+
+function renderAgentGrid() {
+  const grid = $("agentGrid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  
+  for (const agent of state.agents) {
+    const card = document.createElement("div");
+    card.className = `agent-card${state.activeAgent === agent.type ? " active" : ""}`;
+    card.dataset.agentType = agent.type;
+    card.innerHTML = `
+      <span class="agent-icon">${agent.icon}</span>
+      <span class="agent-name">${agent.name}</span>`;
+    card.addEventListener("click", () => selectAgent(agent.type));
+    grid.appendChild(card);
+  }
+}
+
+function selectAgent(agentType) {
+  state.activeAgent = agentType;
+  document.querySelectorAll(".agent-card").forEach((c) => {
+    c.classList.toggle("active", c.dataset.agentType === agentType);
+  });
+  // Could send to backend to update conversation context
+}
+
+function renderPlatformsGrid() {
+  const grid = $("platformsGrid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  
+  for (const platform of state.connectors) {
+    const isConnected = state.connectedAccounts.some(a => a.type === platform.id);
+    const card = document.createElement("div");
+    card.className = `platform-card${isConnected ? " connected" : ""}`;
+    card.dataset.platform = platform.id;
+    card.innerHTML = `
+      <span class="platform-icon">${platform.icon}</span>
+      <span class="platform-name">${platform.name}</span>`;
+    card.addEventListener("click", () => showConnectModal(platform));
+    grid.appendChild(card);
+  }
+}
+
+function renderConnectedList() {
+  const list = $("connectedList");
+  if (!list) return;
+  list.innerHTML = "";
+  
+  if (state.connectedAccounts.length === 0) {
+    list.innerHTML = '<li class="hint-text">No services connected yet</li>';
+    return;
+  }
+  
+  for (const account of state.connectedAccounts) {
+    const platform = state.connectors.find(p => p.id === account.type);
+    const icon = platform ? platform.icon : "🔌";
+    const item = document.createElement("li");
+    item.className = "connected-item";
+    item.innerHTML = `
+      <span class="connected-icon">${icon}</span>
+      <div class="connected-info">
+        <span class="connected-name">${account.name}</span>
+        <span class="connected-meta">${account.type} · ${timeAgo(new Date(account.connected_at).getTime() / 1000)}</span>
+      </div>
+      <span class="connected-status${account.status !== "active" ? " disconnected" : ""}"></span>
+      <div class="connected-actions">
+        <button class="connected-action disconnect" title="Disconnect" data-id="${account.id}">✕</button>
+      </div>`;
+    list.appendChild(item);
+  }
+  
+  // Add disconnect handlers
+  list.querySelectorAll(".connected-action.disconnect").forEach(btn => {
+    btn.addEventListener("click", async (e) => {
+      const id = e.target.dataset.id;
+      if (id) await disconnectAccount(id);
+    });
+  });
+}
+
+async function disconnectAccount(accountId) {
+  try {
+    await fetch(`/api/connectors/${accountId}`, { method: "DELETE" });
+    await loadConnectors();
+  } catch (err) {
+    console.error("Failed to disconnect:", err);
+  }
+}
+
+let currentModal = null;
+
+function showConnectModal(platform) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title">Connect ${platform.name}</span>
+        <button class="modal-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-field">
+          <label class="modal-label">Account Name</label>
+          <input type="text" class="modal-input" id="connName" placeholder="My ${platform.name} account">
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">${platform.name} ${platform.auth_method === "oauth" ? "Access Token" : "API Key"}</label>
+          <input type="password" class="modal-input" id="connToken" placeholder="Paste your ${platform.name} token…">
+        </div>
+        <p class="hint-text" style="font-size:11px;margin:0;">
+          ${getAuthHint(platform)}
+        </p>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-cancel">Cancel</button>
+        <button class="modal-submit">Connect</button>
+      </div>
+    </div>`;
+  
+  document.body.appendChild(overlay);
+  currentModal = overlay;
+  
+  // Close handlers
+  overlay.querySelector(".modal-close").addEventListener("click", closeModal);
+  overlay.querySelector(".modal-cancel").addEventListener("click", closeModal);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) closeModal();
+  });
+  
+  // Submit handler
+  overlay.querySelector(".modal-submit").addEventListener("click", () => {
+    const name = $("connName").value;
+    const token = $("connToken").value;
+    if (name && token) {
+      connectAccount(platform.id, name, token);
+      closeModal();
+    }
+  });
+}
+
+function closeModal() {
+  if (currentModal) {
+    currentModal.remove();
+    currentModal = null;
+  }
+}
+
+function getAuthHint(platform) {
+  const hints = {
+    instagram: "Get your access token from the Instagram Graph API or Meta Developer Portal.",
+    twitter: "Create a Twitter Developer account and generate OAuth tokens or API keys.",
+    github: "Generate a personal access token in GitHub Settings → Developer settings.",
+    telegram: "Create a bot via @BotFather and use the bot token.",
+    discord: "Create a bot in Discord Developer Portal and use the bot token.",
+    slack: "Create a Slack app and install it to your workspace.",
+  };
+  return hints[platform.id] || `Enter your ${platform.name} authentication credentials.`;
+}
+
+async function connectAccount(platform, name, token) {
+  try {
+    const resp = await fetch("/api/connectors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform, account_name: name, account_id: name, token }),
+    });
+    if (resp.ok) {
+      await loadConnectors();
+    }
+  } catch (err) {
+    console.error("Failed to connect:", err);
+  }
 }
 
 function fillSettings() { /* legacy stub — kept for compatibility */ }
@@ -208,37 +404,25 @@ function bindUI() {
     });
     if (which === "history")  refreshHistory();
     if (which === "jobs")    refreshJobs();
+    if (which === "connectors") refreshConnectors();
     if (which === "memory")  refreshMemory();
     if (which === "settings") refreshSettings();
   });
 
-  // Voice in
-  micBtn.addEventListener("click", toggleRecording);
-
-  // Attachments – click + drag-drop
-  attachBtn.addEventListener("click", () => fileInput.click());
-  fileInput.addEventListener("change", (e) => {
-    for (const f of e.target.files) uploadAttachment(f);
-    fileInput.value = "";
+  // Add connector button
+  $("addConnectorBtn")?.addEventListener("click", () => {
+    const firstPlatform = state.connectors.find(p => 
+      !state.connectedAccounts.some(a => a.type === p.id)
+    );
+    if (firstPlatform) showConnectModal(firstPlatform);
   });
 
-  ["dragenter", "dragover"].forEach((evt) =>
-    composer.addEventListener(evt, (e) => {
-      e.preventDefault();
-      composer.classList.add("dragover");
-    })
-  );
-  ["dragleave", "drop"].forEach((evt) =>
-    composer.addEventListener(evt, (e) => {
-      e.preventDefault();
-      composer.classList.remove("dragover");
-    })
-  );
-  composer.addEventListener("drop", (e) => {
-    for (const f of e.dataTransfer.files) {
-      if (f.type.startsWith("image/")) uploadAttachment(f);
-    }
-  });
+  // Agent refresh button
+  $("refreshAgents")?.addEventListener("click", loadAgents);
+}
+
+function refreshConnectors() {
+  loadConnectors();
 }
 
 function updateModelChip() {

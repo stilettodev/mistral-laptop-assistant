@@ -33,6 +33,7 @@ from typing import Any
 import psutil
 
 from .config import settings
+from .connector_manager import CONNECTOR_TOOLS
 from .skills import install_skill, list_available_skills, list_skills, uninstall_skill
 
 
@@ -1232,6 +1233,107 @@ def git_diff(*args: Any, **kwargs: Any) -> dict[str, Any]:
     return _git_diff(*args, **kwargs)
 
 
+# ---------------------------------------------------------------------------
+# Connector tools - interact with external services
+# ---------------------------------------------------------------------------
+
+
+def connect_service(platform: str, account_name: str = "", account_id: str = "",
+                   access_token: str = "", api_key: str = "", bot_token: str = "",
+                   **kwargs: Any) -> dict[str, Any]:
+    """Connect a new service account (Instagram, Twitter, GitHub, etc.).
+
+    Args:
+        platform: Platform name (instagram, twitter, github, telegram, discord, etc.)
+        account_name: Display name for the account
+        account_id: Username or ID on the platform
+        access_token: OAuth access token (if using OAuth)
+        api_key: API key for the platform
+        bot_token: Bot token (for Telegram, Discord)
+    """
+    from .connector_manager import ConnectorManager
+    manager = ConnectorManager()
+    auth_data = kwargs.copy()
+    if access_token:
+        auth_data["access_token"] = access_token
+    if api_key:
+        auth_data["api_key"] = api_key
+    if bot_token:
+        auth_data["bot_token"] = bot_token
+    return manager.connect_account(platform, account_name, account_id, auth_data)
+
+
+def disconnect_service(account_id: str) -> dict[str, Any]:
+    """Disconnect a service account.
+
+    Args:
+        account_id: The ID of the connected account to disconnect
+    """
+    from .connector_manager import ConnectorManager
+    manager = ConnectorManager()
+    return manager.disconnect_account(account_id)
+
+
+def list_connected_services() -> dict[str, Any]:
+    """List all connected service accounts and available platforms."""
+    from .connector_manager import ConnectorManager
+    manager = ConnectorManager()
+    accounts = manager.list_connected_accounts()
+    platforms = manager.list_available_platforms()
+    return _result(True, connected_accounts=accounts, available_platforms=platforms,
+                   total_connected=len(accounts))
+
+
+def post_content(platform: str, text: str, image_urls: str = "", tags: str = "",
+                mentions: str = "", link: str = "") -> dict[str, Any]:
+    """Post content to a connected service.
+
+    Args:
+        platform: Platform to post to (instagram, twitter, linkedin, etc.)
+        text: Content text to post
+        image_urls: Comma-separated list of image URLs
+        tags: Comma-separated hashtags
+        mentions: Comma-separated @mentions
+        link: URL to include
+    """
+    import asyncio
+    from .connector_manager import ConnectorManager
+    
+    manager = ConnectorManager()
+    image_list = [u.strip() for u in image_urls.split(",") if u.strip()] if image_urls else []
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+    mention_list = [m.strip() for m in mentions.split(",") if m.strip()] if mentions else []
+    
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    return loop.run_until_complete(
+        manager.post_to_platform(platform, text, image_list, tag_list, mention_list, link)
+    )
+
+
+def get_service_info(platform: str) -> dict[str, Any]:
+    """Get information about a connected service account.
+
+    Args:
+        platform: Platform to get info from (instagram, twitter, github, etc.)
+    """
+    import asyncio
+    from .connector_manager import ConnectorManager
+    
+    manager = ConnectorManager()
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    return loop.run_until_complete(manager.get_account_info(platform))
+
+
 TOOLS: dict[str, Any] = {
     fn.__name__: fn
     for fn in [
@@ -1307,8 +1409,18 @@ TOOLS: dict[str, Any] = {
         git_log,
         git_branch,
         git_diff,
+        # Connector tools
+        connect_service,
+        disconnect_service,
+        list_connected_services,
+        post_content,
+        get_service_info,
     ]
 }
+
+# Add connector tools to TOOLS dict
+from .connector_manager import CONNECTOR_TOOLS as _ct
+TOOLS.update(_ct)
 
 
 def short_description(fn: Any) -> str:
